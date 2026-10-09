@@ -1,0 +1,123 @@
+[
+  {
+    "name": "exact cell, rounded, and margin of error",
+    "text": "California has 39.3 million people (39,346,023), ±79,849.",
+    "rows": [["California", 39346023.0, 79849.4]],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"39.3 million": "cell", "39,346,023": "cell", "79,849": "cell"}}
+  },
+  {
+    "name": "ratio as percent and difference within a row",
+    "text": "Texas is 72.8% of California, about 10.7 million fewer people.",
+    "rows": [["TX", 28635442.0, 39346023.0]],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"72.8%": "percent", "10.7 million": "difference"}}
+  },
+  {
+    "name": "column sum",
+    "text": "Together they have 1,000,000 residents.",
+    "rows": [["a", 100000.0], ["b", 250000.0], ["c", 650000.0]],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"1,000,000": "column_sum"}}
+  },
+  {
+    "name": "invented number is named",
+    "text": "California has 39,346,023 people and 12,345,678 households.",
+    "rows": [["California", 39346023.0]],
+    "expect": {"ok": false, "ungrounded": ["12,345,678"]}
+  },
+  {
+    "name": "small counts and years are ignored",
+    "text": "Top 5 counties in 2020 out of 58.",
+    "rows": [["x", 1.0]],
+    "expect": {"ok": true, "ungrounded": [], "checked": 0}
+  },
+  {
+    "name": "no evidence flags only large figures",
+    "text": "There are about 330 million people in the US, across 50 states.",
+    "rows": [],
+    "expect": {"ok": false, "ungrounded": ["330 million"]}
+  },
+  {
+    "name": "cross-row difference (the Utah vs Nevada false flag)",
+    "text": "Utah's median is about $79,200, roughly $10,900 higher than Nevada's $68,300.",
+    "rows": [["Utah", 79243.4], ["Nevada", 68303.1]],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"$10,900": "difference"}}
+  },
+  {
+    "name": "scientific notation",
+    "text": "Revenue was 1.2e6 dollars last quarter.",
+    "rows": [{"revenue": 1200000}],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"1.2e6": "cell"}}
+  },
+  {
+    "name": "range with shared scale word",
+    "text": "Somewhere between 39 and 40 million people live there.",
+    "rows": [{"pop": 39346023}],
+    "expect": {"ok": true, "ungrounded": []}
+  },
+  {
+    "name": "range that contains nothing",
+    "text": "Somewhere between 50 and 60 million people live there.",
+    "rows": [{"pop": 39346023}],
+    "expect": {"ok": false, "ungrounded": ["50", "60 million"]}
+  },
+  {
+    "name": "percent change across two columns",
+    "text": "Population grew 2.3% between the two vintages.",
+    "rows": [{"y2019": 220000, "y2020": 225060}],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"2.3%": "percent_change"}}
+  },
+  {
+    "name": "numeric strings in the rows are parsed",
+    "text": "The county has 4,680,609 residents.",
+    "rows": [{"county": "Harris", "pop": "4,680,609"}],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"4,680,609": "cell"}}
+  },
+  {
+    "name": "unmatched percent is flagged under a strict policy",
+    "text": "About 12% of residents are children.",
+    "rows": [{"pop": 1000000}],
+    "policy": {"unmatched_percent": "flag"},
+    "expect": {"ok": false, "ungrounded": ["12%"]}
+  },
+  {
+    "name": "unmatched percent passes by default",
+    "text": "About 12% of residents are children.",
+    "rows": [{"pop": 1000000}],
+    "expect": {"ok": true, "ungrounded": []}
+  },
+  {
+    "name": "a decrease is a difference regardless of sign",
+    "text": "Enrollment fell by 3.2 million over the decade.",
+    "rows": [{"start": 10000000, "end": 6800000}],
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"3.2 million": "difference"}}
+  },
+  {
+    "name": "currency and adjacent-cell sums",
+    "text": "Median income is $78,350, and the three youngest bands total 1,200 residents.",
+    "rows": {"columns": ["income", "a", "b", "c"], "rows": [[78350, 400, 500, 300]]},
+    "expect": {"ok": true, "ungrounded": [], "kinds": {"$78,350": "cell", "1,200": "row_sum"}}
+  },
+  {
+    "name": "several result sets",
+    "text": "California has 39,346,023 people and Texas 28,635,442, a gap of 10.7 million.",
+    "results": [[["CA", 39346023]], [["TX", 28635442]]],
+    "expect": {"ok": true, "ungrounded": []}
+  },
+  {
+    "name": "column names are not mistaken for numbers",
+    "text": "Table B01003e1 reports 39,346,023 people.",
+    "rows": [{"B01003e1": 39346023}],
+    "expect": {"ok": true, "ungrounded": [], "checked": 1}
+  },
+  {
+    "name": "ordinals and identifiers are skipped",
+    "text": "It ranks 1st; see request 9bb930dc4b6b for 39,346,023.",
+    "rows": [{"pop": 39346023}],
+    "expect": {"ok": true, "ungrounded": [], "checked": 1}
+  },
+  {
+    "name": "tolerance edge: 1.6% off is not grounded",
+    "text": "The county has 4,755,000 residents.",
+    "rows": [{"pop": 4680609}],
+    "expect": {"ok": false, "ungrounded": ["4,755,000"]}
+  }
+]
