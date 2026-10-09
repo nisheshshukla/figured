@@ -179,9 +179,9 @@ The Proof-Carrying Numbers policy vocabulary (exact, rounded, scale alias, toler
 
 Behavior is pinned by the conformance vectors in `tests/vectors/`. A port in another language is correct when it passes them unchanged. A TypeScript port is the natural next one; open an issue if you want to take it.
 
-## Origin
+## Why this exists
 
-Extracted from a data agent whose answers had to be traceable to the rows behind them. Its first grounding check derived values only within a row, so a correct "about $10,900 higher" comparison across two rows was flagged as suspect. That false flag is now a named test vector, and it is why the defaults lean toward trusting the model when the arithmetic works out.
+Models are being wired into dashboards, reports, and analytics assistants faster than the checks around them. We validate the SQL, cap the rows, and then trust a paragraph the model wrote about the numbers. I think that step deserves a deterministic check that runs on every answer, the way a type checker runs on every build: no model grading a model, no sampling, no cost argument for skipping it. `figured` is that check for numbers. It is small on purpose, so it can be a default rather than a project.
 
 ## License
 
