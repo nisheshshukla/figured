@@ -1,0 +1,91 @@
+[
+  {
+    "name": "an identifier copied from a tool result is sourced",
+    "messages": [
+      {"role": "user", "content": "Refund my last order."},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "get_orders", "arguments": "{\"user_id\": \"mia_li_3668\"}"}}]},
+      {"role": "tool", "tool_call_id": "1", "content": "{\"orders\": [{\"id\": \"ORD-88213\", \"total\": 49.99}]}"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "2", "function": {"name": "refund", "arguments": "{\"order_id\": \"ORD-88213\", \"amount\": 49.99}"}}]}
+    ],
+    "expect": {"unsourced": ["get_orders.user_id"]}
+  },
+  {
+    "name": "a transposed identifier is caught before the refund runs",
+    "messages": [
+      {"role": "user", "content": "Refund my last order. My user id is mia_li_3668."},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "get_orders", "arguments": "{\"user_id\": \"mia_li_3668\"}"}}]},
+      {"role": "tool", "tool_call_id": "1", "content": "{\"orders\": [{\"id\": \"ORD-88213\", \"total\": 49.99}]}"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "2", "function": {"name": "refund", "arguments": "{\"order_id\": \"ORD-88231\", \"amount\": 49.99}"}}]}
+    ],
+    "expect": {"unsourced": ["refund.order_id"]}
+  },
+  {
+    "name": "a guessed email is caught",
+    "messages": [
+      {"role": "user", "content": "I'm Mei Kovacs, I forgot my email."},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "find_user", "arguments": "{\"email\": \"mei.kovacs@example.com\"}"}}]}
+    ],
+    "expect": {"unsourced": ["find_user.email"]}
+  },
+  {
+    "name": "a date the user asked to move by a day is derived",
+    "messages": [
+      {"role": "user", "content": "Move my flight to a day later please."},
+      {"role": "tool", "name": "get_reservation", "content": "{\"flights\": [{\"date\": \"2024-05-19\"}]}"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "search", "arguments": "{\"date\": \"2024-05-20\"}"}}]}
+    ],
+    "expect": {"unsourced": []}
+  },
+  {
+    "name": "a date two days off is not derived from a one-day shift",
+    "messages": [
+      {"role": "user", "content": "Move my flight to a day later please."},
+      {"role": "tool", "name": "get_reservation", "content": "{\"flights\": [{\"date\": \"2024-05-19\"}]}"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "search", "arguments": "{\"date\": \"2024-05-21\"}"}}]}
+    ],
+    "expect": {"unsourced": ["search.date"]}
+  },
+  {
+    "name": "an order number the user gave without its prefix",
+    "messages": [
+      {"role": "user", "content": "The order number is 9502127."},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "get_order", "arguments": "{\"order_id\": \"#W9502127\"}"}}]}
+    ],
+    "expect": {"unsourced": []}
+  },
+  {
+    "name": "an amount is a price times the passenger count",
+    "messages": [
+      {"role": "user", "content": "Book it for me and my two kids."},
+      {"role": "tool", "name": "search", "content": "{\"flight\": \"HAT271\", \"price\": 174}"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "book", "arguments": "{\"flight\": \"HAT271\", \"amount\": 522}"}}]}
+    ],
+    "expect": {"unsourced": []}
+  },
+  {
+    "name": "an amount that is no price, total, or count multiple",
+    "messages": [
+      {"role": "tool", "name": "search", "content": "{\"flight\": \"HAT271\", \"price\": 174}"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "book", "arguments": "{\"flight\": \"HAT271\", \"amount\": 199}"}}]}
+    ],
+    "expect": {"unsourced": ["book.amount"]}
+  },
+  {
+    "name": "an itemized total stated by the agent",
+    "messages": [
+      {"role": "tool", "name": "order", "content": "{\"items\": [{\"price\": 622.12}, {\"price\": 473.43}]}"},
+      {"role": "assistant", "content": "Refund: $622.12 + $473.43 = $1,095.55."}
+    ],
+    "expect": {"unsourced": []}
+  },
+  {
+    "name": "Anthropic content blocks",
+    "messages": [
+      {"role": "user", "content": [{"type": "text", "text": "Look up order W-1234567"}]},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "get_order", "input": {"order_id": "W-1234567"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "{\"customer\": \"cus_77812\"}"}]},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "t2", "name": "email", "input": {"customer": "cus_77821"}}]}
+    ],
+    "expect": {"unsourced": ["email.customer"]}
+  }
+]

@@ -35,7 +35,8 @@ _NUMBER = re.compile(
     (?!(?:st|nd|rd|th)\b)
     (?:
         \s?(?P<pct>%)
-      | \s?(?P<word>percentage\ points|percent|pct|pp|thousand|million|billion|trillion|mn|mm|bn|tn|k|m|b|t)\b
+      | \s?(?P<word>percentage\ points|percent|pct|pp|thousand|million|billion|trillion
+                    |mn|mm|bn|tn|k|m|b|t)\b(?![-'][A-Za-z])
     )?
     (?![A-Za-z_])
     """,

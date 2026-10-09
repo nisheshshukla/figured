@@ -10,7 +10,7 @@ import pytest
 from figured import trace
 
 VECTOR_DIR = Path(__file__).parent / "vectors"
-VECTORS = [v for f in sorted(VECTOR_DIR.glob("*.json")) for v in json.loads(f.read_text())]
+VECTORS = json.loads((VECTOR_DIR / "core.json").read_text())
 
 
 @pytest.mark.parametrize("vec", VECTORS, ids=[v["name"] for v in VECTORS])

@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "figured"
-version = "0.1.2"
-description = "Show your work: a deterministic online eval that traces every number in an LLM-generated answer to the rows it came from."
+version = "0.2.0"
+description = "Show your work: deterministic online evals that trace every number in an LLM answer, and every value an agent passes to a tool, to its source."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Nishesh Shukla" }]
-keywords = ["llm", "hallucination", "grounding", "text-to-sql", "faithfulness", "evaluation", "online-eval", "guardrails", "observability"]
+keywords = ["llm", "hallucination", "grounding", "text-to-sql", "faithfulness", "evaluation", "online-eval", "guardrails", "observability", "agents", "tool-calling", "provenance", "prompt-injection"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",

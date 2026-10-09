@@ -19,6 +19,7 @@ RANK = {
     "column_sum": 1,
     "row_sum": 2,
     "difference": 3,
+    "sum": 3,
     "ratio": 4,
     "percent": 4,
     "percent_change": 5,
@@ -165,6 +166,10 @@ class Index:
             m = self._differences(lo, hi, score)
             if m:
                 return m
+        if "sum" in allowed and not is_percent:
+            m = self._sums(lo, hi, score)
+            if m:
+                return m
         kind = "percent" if is_percent else "ratio"
         if kind in allowed:
             m = self._ratios(lo, hi, kind, score)
@@ -268,6 +273,34 @@ class Index:
         return Match(
             Candidate(
                 d, "difference", f"{ca.ref()} − {cb.ref()} = {fmt(ca.value)} − {fmt(cb.value)} = {fmt(d)}"
+            ),
+            best[0],
+        )
+
+    def _sums(self, lo: float, hi: float, score: Scorer) -> Match | None:
+        """Pairs with a + b in [lo, hi]. As b grows the window for a slides left: two pointers."""
+        vals, n = self.pair_vals, len(self.pair_vals)
+        best: tuple[float, int, int] | None = None
+        s = e = n
+        for j in range(n):
+            b = vals[j]
+            a_lo, a_hi = lo - b, hi - b
+            while e > 0 and vals[e - 1] > a_hi:
+                e -= 1
+            while s > 0 and vals[s - 1] >= a_lo:
+                s -= 1
+            for i in range(max(s, j + 1), e):
+                err = score(abs(vals[i] + b))
+                if err is not None and (best is None or err < best[0]):
+                    best = (err, i, j)
+        if best is None:
+            return None
+        _, i, j = best
+        ca, cb = self.cell(self.pair_refs[i]), self.cell(self.pair_refs[j])
+        total = ca.value + cb.value
+        return Match(
+            Candidate(
+                total, "sum", f"{ca.ref()} + {cb.ref()} = {fmt(ca.value)} + {fmt(cb.value)} = {fmt(total)}"
             ),
             best[0],
         )

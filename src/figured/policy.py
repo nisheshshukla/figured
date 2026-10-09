@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
-DERIVATIONS = ("cell", "column_sum", "row_sum", "difference", "ratio", "percent", "percent_change")
+DERIVATIONS = ("cell", "column_sum", "row_sum", "difference", "sum", "ratio", "percent", "percent_change")
 
 
 @dataclass(frozen=True)

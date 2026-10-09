@@ -13,3 +13,4 @@ build/
 coverage.xml
 htmlcov/
 .DS_Store
+benchmarks/data/

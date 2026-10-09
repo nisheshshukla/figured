@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0
+
+Agent runs.
+
+- `figured.agents.RunMonitor`: an online, pre-execution check for agent tool calls. Every identifier, email, URL, date, amount, and short address-like phrase in a call's arguments must come from the user, the system prompt, an earlier tool result, or arithmetic over those. Returns allow, warn, or block before the call runs.
+- Source rules: per-argument limits on where a value may come from, so a recipient that arrived in a tool result instead of from the user is blocked (taint tracking for indirect prompt injection).
+- Loop and budget findings: identical calls repeated, calls retried with the same arguments after an error, and a tool-call budget.
+- `figured.agents.check_run`: replays a finished transcript in OpenAI or Anthropic message format through the same monitor, for offline evals and trace review.
+- Dates in many forms, relative words against the system prompt's date, lists such as "May 16th or 18th", and shifts the user asked for ("a day later").
+- Measured on 1,980 public tau-bench runs: 0.8% of successful runs flagged, all of them real fabrications on review; 2,994 of 2,998 corrupted identifiers caught. See `docs/agent-eval-results.md`.
+
+Answers.
+
+- New derivation: the sum of two cells, within or across rows.
+- Fix: a one-letter scale word followed by a hyphenated word is not a scale ("12 T-shirts" is 12, not 12 trillion).
+
 ## 0.1.2
 
 - Documentation only: the derivation table, CLI example, and judge example use the sales dataset.
