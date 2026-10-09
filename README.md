@@ -167,6 +167,7 @@ It reads the key from the environment by default. To use a different model, a di
 
 ```python
 import anthropic
+
 judge(question, answer, rows, model="claude-sonnet-5", client=anthropic.Anthropic(api_key="..."))
 ```
 
