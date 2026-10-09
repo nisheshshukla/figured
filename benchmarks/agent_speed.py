@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-import agent_runs as ar
+import agent_eval as ae
 
 from figured.agents import RunMonitor, check_run, events
 
@@ -30,10 +30,10 @@ def pct(xs: list[float], p: float) -> float:
 def per_call() -> None:
     call_us: list[float] = []
     other_us: list[float] = []
-    for name in ar.FILES:
-        for r in ar.load(name):
-            m = RunMonitor(ar.POLICY)
-            for kind, ev in events(r["traj"]):
+    for name in ae.TAU_FILES:
+        for r in ae.load_tau(name):
+            m = RunMonitor(ae.POLICY)
+            for kind, ev in events(r.messages):
                 t = time.perf_counter()
                 if kind == "system":
                     m.system(ev["text"])
@@ -91,9 +91,9 @@ def synthetic() -> None:
 
 def golden(path: Path) -> None:
     h = hashlib.sha256()
-    for name in ar.FILES:
-        for r in ar.load(name):
-            rep = check_run(r["traj"], ar.POLICY)
+    for name in ae.TAU_FILES:
+        for r in ae.load_tau(name):
+            rep = check_run(r.messages, ae.POLICY)
             h.update(json.dumps(rep.to_dict(), sort_keys=True, default=str).encode())
     path.write_text(h.hexdigest() + "\n")
     print("golden", h.hexdigest())

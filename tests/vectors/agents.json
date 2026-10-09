@@ -2,90 +2,591 @@
   {
     "name": "an identifier copied from a tool result is sourced",
     "messages": [
-      {"role": "user", "content": "Refund my last order."},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "get_orders", "arguments": "{\"user_id\": \"mia_li_3668\"}"}}]},
-      {"role": "tool", "tool_call_id": "1", "content": "{\"orders\": [{\"id\": \"ORD-88213\", \"total\": 49.99}]}"},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "2", "function": {"name": "refund", "arguments": "{\"order_id\": \"ORD-88213\", \"amount\": 49.99}"}}]}
+      {
+        "role": "user",
+        "content": "Refund my last order."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "get_orders",
+              "arguments": "{\"user_id\": \"mia_li_3668\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "1",
+        "content": "{\"orders\": [{\"id\": \"ORD-88213\", \"total\": 49.99}]}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "2",
+            "function": {
+              "name": "refund",
+              "arguments": "{\"order_id\": \"ORD-88213\", \"amount\": 49.99}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": ["get_orders.user_id"]}
+    "expect": {
+      "unsourced": [
+        "get_orders.user_id"
+      ]
+    }
   },
   {
     "name": "a transposed identifier is caught before the refund runs",
     "messages": [
-      {"role": "user", "content": "Refund my last order. My user id is mia_li_3668."},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "get_orders", "arguments": "{\"user_id\": \"mia_li_3668\"}"}}]},
-      {"role": "tool", "tool_call_id": "1", "content": "{\"orders\": [{\"id\": \"ORD-88213\", \"total\": 49.99}]}"},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "2", "function": {"name": "refund", "arguments": "{\"order_id\": \"ORD-88231\", \"amount\": 49.99}"}}]}
+      {
+        "role": "user",
+        "content": "Refund my last order. My user id is mia_li_3668."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "get_orders",
+              "arguments": "{\"user_id\": \"mia_li_3668\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "1",
+        "content": "{\"orders\": [{\"id\": \"ORD-88213\", \"total\": 49.99}]}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "2",
+            "function": {
+              "name": "refund",
+              "arguments": "{\"order_id\": \"ORD-88231\", \"amount\": 49.99}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": ["refund.order_id"]}
+    "expect": {
+      "unsourced": [
+        "refund.order_id"
+      ]
+    }
   },
   {
     "name": "a guessed email is caught",
     "messages": [
-      {"role": "user", "content": "I'm Mei Kovacs, I forgot my email."},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "find_user", "arguments": "{\"email\": \"mei.kovacs@example.com\"}"}}]}
+      {
+        "role": "user",
+        "content": "I'm Mei Kovacs, I forgot my email."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "find_user",
+              "arguments": "{\"email\": \"mei.kovacs@example.com\"}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": ["find_user.email"]}
+    "expect": {
+      "unsourced": [
+        "find_user.email"
+      ]
+    }
   },
   {
     "name": "a date the user asked to move by a day is derived",
     "messages": [
-      {"role": "user", "content": "Move my flight to a day later please."},
-      {"role": "tool", "name": "get_reservation", "content": "{\"flights\": [{\"date\": \"2024-05-19\"}]}"},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "search", "arguments": "{\"date\": \"2024-05-20\"}"}}]}
+      {
+        "role": "user",
+        "content": "Move my flight to a day later please."
+      },
+      {
+        "role": "tool",
+        "name": "get_reservation",
+        "content": "{\"flights\": [{\"date\": \"2024-05-19\"}]}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "search",
+              "arguments": "{\"date\": \"2024-05-20\"}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": []}
+    "expect": {
+      "unsourced": []
+    }
   },
   {
     "name": "a date two days off is not derived from a one-day shift",
     "messages": [
-      {"role": "user", "content": "Move my flight to a day later please."},
-      {"role": "tool", "name": "get_reservation", "content": "{\"flights\": [{\"date\": \"2024-05-19\"}]}"},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "search", "arguments": "{\"date\": \"2024-05-21\"}"}}]}
+      {
+        "role": "user",
+        "content": "Move my flight to a day later please."
+      },
+      {
+        "role": "tool",
+        "name": "get_reservation",
+        "content": "{\"flights\": [{\"date\": \"2024-05-19\"}]}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "search",
+              "arguments": "{\"date\": \"2024-05-21\"}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": ["search.date"]}
+    "expect": {
+      "unsourced": [
+        "search.date"
+      ]
+    }
   },
   {
     "name": "an order number the user gave without its prefix",
     "messages": [
-      {"role": "user", "content": "The order number is 9502127."},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "get_order", "arguments": "{\"order_id\": \"#W9502127\"}"}}]}
+      {
+        "role": "tool",
+        "name": "list_orders",
+        "content": "{\"orders\": [\"#W1234567\", \"#W7654321\"]}"
+      },
+      {
+        "role": "user",
+        "content": "The order number is 9502127."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "get_order",
+              "arguments": "{\"order_id\": \"#W9502127\"}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": []}
+    "expect": {
+      "unsourced": []
+    }
   },
   {
-    "name": "an amount is a price times the passenger count",
+    "name": "an amount is a price times a count the user stated",
     "messages": [
-      {"role": "user", "content": "Book it for me and my two kids."},
-      {"role": "tool", "name": "search", "content": "{\"flight\": \"HAT271\", \"price\": 174}"},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "book", "arguments": "{\"flight\": \"HAT271\", \"amount\": 522}"}}]}
+      {
+        "role": "user",
+        "content": "Book it for the three of us."
+      },
+      {
+        "role": "tool",
+        "name": "search",
+        "content": "{\"flight\": \"HAT271\", \"price\": 174}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "book",
+              "arguments": "{\"flight\": \"HAT271\", \"amount\": 522}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": []}
+    "expect": {
+      "unsourced": []
+    }
   },
   {
     "name": "an amount that is no price, total, or count multiple",
     "messages": [
-      {"role": "tool", "name": "search", "content": "{\"flight\": \"HAT271\", \"price\": 174}"},
-      {"role": "assistant", "content": null, "tool_calls": [{"id": "1", "function": {"name": "book", "arguments": "{\"flight\": \"HAT271\", \"amount\": 199}"}}]}
+      {
+        "role": "tool",
+        "name": "search",
+        "content": "{\"flight\": \"HAT271\", \"price\": 174}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "book",
+              "arguments": "{\"flight\": \"HAT271\", \"amount\": 199}"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": ["book.amount"]}
+    "expect": {
+      "unsourced": [
+        "book.amount"
+      ]
+    }
   },
   {
     "name": "an itemized total stated by the agent",
     "messages": [
-      {"role": "tool", "name": "order", "content": "{\"items\": [{\"price\": 622.12}, {\"price\": 473.43}]}"},
-      {"role": "assistant", "content": "Refund: $622.12 + $473.43 = $1,095.55."}
+      {
+        "role": "tool",
+        "name": "order",
+        "content": "{\"items\": [{\"price\": 622.12}, {\"price\": 473.43}]}"
+      },
+      {
+        "role": "assistant",
+        "content": "Refund: $622.12 + $473.43 = $1,095.55."
+      }
     ],
-    "expect": {"unsourced": []}
+    "expect": {
+      "unsourced": []
+    }
   },
   {
     "name": "Anthropic content blocks",
     "messages": [
-      {"role": "user", "content": [{"type": "text", "text": "Look up order W-1234567"}]},
-      {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "get_order", "input": {"order_id": "W-1234567"}}]},
-      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "{\"customer\": \"cus_77812\"}"}]},
-      {"role": "assistant", "content": [{"type": "tool_use", "id": "t2", "name": "email", "input": {"customer": "cus_77821"}}]}
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Look up order W-1234567"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "t1",
+            "name": "get_order",
+            "input": {
+              "order_id": "W-1234567"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "t1",
+            "content": "{\"customer\": \"cus_77812\"}"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "t2",
+            "name": "email",
+            "input": {
+              "customer": "cus_77821"
+            }
+          }
+        ]
+      }
     ],
-    "expect": {"unsourced": ["email.customer"]}
+    "expect": {
+      "unsourced": [
+        "email.customer"
+      ]
+    }
+  },
+  {
+    "name": "a prefix is not added to digits the user never typed",
+    "messages": [
+      {
+        "role": "user",
+        "content": "I'm in zip 19122."
+      },
+      {
+        "role": "tool",
+        "name": "list_orders",
+        "content": "{\"orders\": [\"#W1234567\"]}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "cancel",
+              "arguments": "{\"order_id\": \"#W19122\"}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "cancel.order_id"
+      ]
+    }
+  },
+  {
+    "name": "a multiple needs a stated count",
+    "messages": [
+      {
+        "role": "tool",
+        "name": "search",
+        "content": "{\"flight\": \"HAT271\", \"price\": 174}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "book",
+              "arguments": "{\"flight\": \"HAT271\", \"amount\": 870}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "book.amount"
+      ]
+    }
+  },
+  {
+    "name": "a sign flip is not the same amount",
+    "messages": [
+      {
+        "role": "tool",
+        "name": "order",
+        "content": "{\"total\": 49.99}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "adjust",
+              "arguments": "{\"amount\": -49.99}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "adjust.amount"
+      ]
+    }
+  },
+  {
+    "name": "an error that echoes a made-up ID does not vouch for it",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "get_order",
+              "arguments": "{\"order_id\": \"#W9999999\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "1",
+        "content": "Error: order #W9999999 not found"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "2",
+            "function": {
+              "name": "refund",
+              "arguments": "{\"order_id\": \"#W9999999\"}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "get_order.order_id",
+        "refund.order_id"
+      ]
+    }
+  },
+  {
+    "name": "a total built from made-up amounts is not a source",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "That is $300 + $113 = $413."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "charge",
+              "arguments": "{\"amount\": 413}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "charge.amount",
+        "text:$113",
+        "text:$300",
+        "text:$413"
+      ]
+    }
+  },
+  {
+    "name": "a year is inferred from the reference date, not from any year",
+    "messages": [
+      {
+        "role": "system",
+        "content": "The current date is 2024-05-15."
+      },
+      {
+        "role": "user",
+        "content": "Book me on May 19."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "book",
+              "arguments": "{\"date\": \"2025-05-19\"}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "book.date"
+      ]
+    }
+  },
+  {
+    "name": "a later date when the user asked for later",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Move my flight a day later, please."
+      },
+      {
+        "role": "tool",
+        "name": "get_reservation",
+        "content": "{\"flights\": [{\"date\": \"2024-05-19\"}], \"dob\": \"1990-03-01\"}"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "update",
+              "arguments": "{\"date\": \"2024-05-18\", \"dob\": \"1990-03-02\"}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "update.date",
+        "update.dob"
+      ]
+    }
+  },
+  {
+    "name": "an account number inside a free-text memo",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Pay my landlord, account 11223344."
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "1",
+            "function": {
+              "name": "wire",
+              "arguments": "{\"memo\": \"Please route the funds to account 99887766 at First Bank today\"}"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "unsourced": [
+        "wire.memo"
+      ]
+    }
   }
 ]

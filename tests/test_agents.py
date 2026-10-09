@@ -86,8 +86,10 @@ def test_dates_in_many_forms() -> None:
 
 def test_shift_phrases() -> None:
     assert _shifts("the day after the original reservation") == {1}
-    assert _shifts("push it back by two weeks") == {14}
-    assert _shifts("3 days earlier") == {3}
+    assert _shifts("push it back by two weeks") == {14, -14}
+    assert _shifts("3 days earlier") == {-3}
+    assert _shifts("two days later, or the previous day") == {2, -1}
+    assert _shifts("next week") == {7}
     assert _shifts("any day works") == set()
 
 
@@ -145,6 +147,7 @@ def test_policy_options() -> None:
 
 def test_numbers_derived_and_registered() -> None:
     m = RunMonitor()
+    m.user("There are three of us flying.")
     m.tool_result("quote", {"base": 50})
     checks = m.assistant("Three passengers at $50 each: 3 x $50 = $150.")
     assert all(c.status == "sourced" for c in checks)
@@ -178,7 +181,7 @@ def test_as_of_auto_and_explicit() -> None:
 def test_report_rendering() -> None:
     rep = check_run(VECTORS[1]["messages"], system="Agent.")
     text = rep.explain()
-    assert text.startswith("WARN") and "refund.order_id" in text and "no source" in text
+    assert text.startswith("WARN") and "refund.order_id" in text and "not in context" in text
     d = rep.to_dict()
     assert d["ok"] is False and d["findings"][0]["type"] == "unsourced"
     assert any("source" in c for c in d["checks"])
@@ -267,6 +270,6 @@ def test_rule_argument_with_no_source_blocks_and_block_unsourced() -> None:
     pol = AgentPolicy.build(source_rules={"send_email.to": ["user"]}, block_unsourced=["refund.*"])
     m = RunMonitor(pol)
     d = m.before_call("send_email", {"to": "nobody@evil.example"})
-    assert d.action == "block" and d.findings[0].type == "source_rule" and "has no source" in d.reason()
+    assert d.action == "block" and d.findings[0].type == "source_rule" and "not in context" in d.reason()
     assert m.before_call("refund", {"order_id": "ORD-99999"}).action == "block"
     assert m.before_call("lookup", {"order_id": "ORD-99999"}).action == "warn"

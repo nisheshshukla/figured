@@ -59,6 +59,7 @@ allowed-confusables = ["−", "–", "—", "÷", "±", "×"]
 [tool.ruff.lint.per-file-ignores]
 "src/figured/judge.py" = ["E501"]
 "tests/*" = ["RUF012"]
+"benchmarks/*" = ["E501"]
 
 [tool.mypy]
 python_version = "3.10"

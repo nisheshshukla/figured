@@ -55,10 +55,53 @@ WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 _RELATIVE = re.compile(
     r"\b(today|tonight|tomorrow|yesterday|day after tomorrow|" + "|".join(WEEKDAYS) + r")\b", re.IGNORECASE
 )
+_MONTH_END = re.compile(r"\bend of (?:the |this )?(next )?month\b", re.IGNORECASE)
+_INTL_MONTHS = {
+    name: i + 1
+    for i, names in enumerate(
+        [
+            "enero janvier januar jänner janeiro gennaio",
+            "febrero février fevrier februar fevereiro febbraio",
+            "marzo mars märz maerz março marco",
+            "abril avril aprile",
+            "mayo mai maio maggio",
+            "junio juin juni junho giugno",
+            "julio juillet juli julho luglio",
+            "agosto août aout",
+            "septiembre setiembre septembre setembro settembre",
+            "octubre octobre oktober outubro ottobre",
+            "noviembre novembre",
+            "diciembre décembre decembre dezember dezembro dicembre",
+        ]
+    )
+    for name in names.split()
+}
+_INTL = re.compile(
+    r"\b(\d{1,2})(?:\.|º|ª|er)?\s+(?:de\s+|di\s+)?("
+    + "|".join(sorted(_INTL_MONTHS, key=len, reverse=True))
+    + r")\b\.?(?:,?\s+(?:de\s+|del\s+)?(\d{4}))?",
+    re.IGNORECASE,
+)
+_CJK = re.compile(r"(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]")
 
 DateKey = tuple[int | None, int, int]
 _MONTH3 = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 _RELATIVE_HINTS = ("today", "tonight", "tomorrow", "yesterday", "day")
+_UNIT_NAMES = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+    "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+)  # fmt: skip
+_UNITS = {w: i for i, w in enumerate(_UNIT_NAMES)}
+_TENS = {
+    w: 10 * (i + 2)
+    for i, w in enumerate(("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"))
+}
+_SCALES = {"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000}
+_NUMBER_WORD = "|".join([*_UNITS, *_TENS, "hundred", *_SCALES])
+_NUMBER_WORDS = re.compile(
+    r"\b(?:" + _NUMBER_WORD + r")(?:(?:[\s-]+(?:and[\s-]+)?)(?:" + _NUMBER_WORD + r"))*\b", re.IGNORECASE
+)
+_NUMBER_HINTS = ("teen", "hundred", "thousand", "illion", *_TENS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,11 +133,41 @@ def classify(value: Any, hint: dict[str, Any] | None = None) -> Kind | None:
         return "url"
     if fmt in ("date", "date-time") or is_date_literal(s):
         return "date"
+    if numeric_string(s) is not None:
+        return "number"
     if len(s) > 80 or len(s.split()) > 6:
         return None
     if not any(ch.isdigit() for ch in s):
         return None
     return "phrase" if any(ch.isspace() for ch in s) else "identifier"
+
+
+_NUMERIC = re.compile(r"^[-+]?[$€£¥]?\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$")
+
+
+def numeric_string(s: str) -> float | None:
+    """The value of a string that is a quantity ("49.90", "$1,200", "12%", "7"), or None. A plain run
+    of five or more digits, or one with a leading zero, is an identifier (a zip, an item ID), not a
+    quantity."""
+    s = s.strip()
+    if not _NUMERIC.match(s):
+        return None
+    core = s.lstrip("+-")
+    if core.isdigit() and (len(core) >= 5 or (len(core) > 1 and core[0] == "0")):
+        return None
+    try:
+        return float(
+            s.lstrip("+")
+            .replace("$", "")
+            .replace("€", "")
+            .replace("£", "")
+            .replace("¥", "")
+            .replace(",", "")
+            .rstrip("%")
+            .strip()
+        )
+    except ValueError:
+        return None
 
 
 def is_date_literal(s: str) -> bool:
@@ -121,8 +194,10 @@ def looks_like_identifier(token: str) -> bool:
     return digits >= 2 or upper >= 2
 
 
-def parse_dates(text: str, as_of: dt.date | None = None) -> set[DateKey]:
-    """Every calendar date mentioned in `text`, with relative words resolved against `as_of`."""
+def parse_dates(text: str, as_of: dt.date | None = None, *, intl: bool = True) -> set[DateKey]:
+    """Every calendar date mentioned in `text`, with relative words resolved against `as_of`. `intl`
+    also reads day-month dates in Spanish, French, German, Portuguese, and Italian; it is off for tool
+    results, which are almost always ISO, because it is the costliest pattern."""
     out: set[DateKey] = set()
     low = text.lower()
     has_digit_dash = "-" in text
@@ -146,6 +221,15 @@ def parse_dates(text: str, as_of: dt.date | None = None) -> set[DateKey]:
             pos = more.end()
     for m in _DAY_MONTH.finditer(text) if has_month else ():
         _add(out, int(m.group(3)) if m.group(3) else None, MONTHS[m.group(2).lower()[:3]], int(m.group(1)))
+    for m in _INTL.finditer(text) if intl else ():
+        _add(out, int(m.group(3)) if m.group(3) else None, _INTL_MONTHS[m.group(2).lower()], int(m.group(1)))
+    for m in _CJK.finditer(text) if "月" in text else ():
+        _add(out, int(m.group(1)) if m.group(1) else None, int(m.group(2)), int(m.group(3)))
+    if as_of is not None and "end of" in low:
+        for m in _MONTH_END.finditer(text):
+            first = (as_of.replace(day=1) + dt.timedelta(days=32 * (2 if m.group(1) else 1))).replace(day=1)
+            last = first - dt.timedelta(days=1)
+            out.add((last.year, last.month, last.day))
     if as_of is not None and any(w in low for w in _RELATIVE_HINTS):
         for m in _RELATIVE.finditer(text):
             word = m.group(1).lower()
@@ -163,6 +247,31 @@ def parse_dates(text: str, as_of: dt.date | None = None) -> set[DateKey]:
             for d in days:
                 when = as_of + dt.timedelta(days=d)
                 out.add((when.year, when.month, when.day))
+    return out
+
+
+def number_words(text: str) -> list[float]:
+    """Amounts written in English words: "two hundred fifty" -> 250, "twenty-five" -> 25. Only values
+    above twelve; smaller ones are counts, handled separately."""
+    low = text.lower()
+    if not any(h in low for h in _NUMBER_HINTS):
+        return []
+    out: list[float] = []
+    for m in _NUMBER_WORDS.finditer(low):
+        total = current = 0
+        for w in re.split(r"[\s-]+", m.group(0)):
+            if w in _UNITS:
+                current += _UNITS[w]
+            elif w in _TENS:
+                current += _TENS[w]
+            elif w == "hundred":
+                current = (current or 1) * 100
+            elif w in _SCALES:
+                total += (current or 1) * _SCALES[w]
+                current = 0
+        value = total + current
+        if value > 12:
+            out.append(float(value))
     return out
 
 
@@ -187,7 +296,7 @@ def extract_text_values(text: str) -> list[TextValue]:
         if free(m.start(), m.end()):
             found.append(TextValue("email", m.group(0), m.group(0), m.start(), m.end()))
             taken.append((m.start(), m.end()))
-    for rx in (_ISO, _SLASH, _MONTH_DAY, _DAY_MONTH):
+    for rx in (_ISO, _SLASH, _MONTH_DAY, _DAY_MONTH, _INTL, _CJK):
         for m in rx.finditer(text):
             if free(m.start(), m.end()):
                 keys = parse_dates(m.group(0))
@@ -196,9 +305,9 @@ def extract_text_values(text: str) -> list[TextValue]:
                     taken.append((m.start(), m.end()))
     for m in _TOKEN.finditer(text):
         tok = m.group(0)
-        if _EXAMPLE.search(text[max(0, m.start() - 24) : m.start()]):
+        if not looks_like_identifier(tok) or not free(m.start(), m.end()):
             continue
-        if free(m.start(), m.end()) and looks_like_identifier(tok):
+        if not _EXAMPLE.search(text[max(0, m.start() - 24) : m.start()]):
             found.append(TextValue("identifier", tok, tok, m.start(), m.end()))
             taken.append((m.start(), m.end()))
     found.sort(key=lambda v: v.start)
