@@ -202,7 +202,7 @@ Each call is one model request over the question, up to 30 rows per result set, 
 | llmground | no, a source string | no | yes | yes | pip |
 | @demystify/grounding | no, cited facts | no | yes | yes | npm |
 | pcn-core (Proof-Carrying Numbers) | claim values you supply | no | yes | yes, needs model-emitted tags | pip |
-| NumProof | yes | yes | yes | yes | hosted API |
+| NumProof | no: verifies a self-contained claim, or audits a spreadsheet for internal consistency | yes, within the claim or sheet | yes | per claim | hosted API, open client |
 | DeepEval / Ragas faithfulness | text context | n/a | no, LLM or NLI | no | pip |
 
 The Proof-Carrying Numbers policy vocabulary (exact, rounded, scale alias, tolerance, percent, range, year) is the clearest statement of the matching problem, and this library borrows its shape. The difference is the evidence contract: rows in, free text in, no cooperation from the model required.
