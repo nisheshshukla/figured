@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- Currency figures are always checked, regardless of size. A "$71" average order value is a claim about the data, not a count of things, and the small-number rule no longer skips it.
+- Derived values are found per figure by solving for the partner cell and bisecting, instead of enumerating every pair up front. Typical answers check in about 150 µs; 2,000-row results in about 9 ms.
+- A percentage is searched only as a percentage and a plain figure only as a ratio, removing a class of coincidental matches.
+- Adjacent-cell sums cover the first `max_rows` rows, like the pairwise search.
+- README and examples use a generic sales dataset; the benchmark script is in `benchmarks/`.
+
 ## 0.1.0
 
 First release.

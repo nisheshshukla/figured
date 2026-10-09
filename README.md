@@ -5,21 +5,32 @@
 ```python
 from figured import trace
 
-rows = [{"state": "California", "pop": 39_346_023}, {"state": "Texas", "pop": 28_635_442}]
-answer = "California has 39.3 million people, about 10.7 million more than Texas, and 4.1 million of them moved last year."
+rows = [
+    {"region": "North America", "revenue": 4_820_000, "orders": 61_300},
+    {"region": "Europe", "revenue": 3_150_000, "orders": 47_900},
+    {"region": "APAC", "revenue": 1_930_000, "orders": 35_100},
+]
+answer = (
+    "North America brought in $4.82M, about 53% more than Europe, and the three regions "
+    "combined reached $9.9M on 144,300 orders. Average order value in APAC was $71."
+)
 
 report = trace(answer, rows)
 report.ok  # False
-report.ungrounded  # ['4.1 million']
+report.ungrounded  # ['$71']
 print(report.explain())
 ```
 
 ```
-UNGROUNDED · 3 checked · 1 untraceable
-  ✓ 39.3 million     cell           pop[California] = 39,346,023
-  ✓ 10.7 million     difference     pop[California] − pop[Texas] = 39,346,023 − 28,635,442 = 10,710,581
-  ✗ 4.1 million      no cell, sum, difference, or ratio within tolerance
+UNGROUNDED · 5 checked · 1 untraceable
+  ✓ $4.82M           cell           revenue[North America] = 4,820,000
+  ✓ 53%              percent_change (revenue[North America] − revenue[Europe]) ÷ revenue[Europe] = 53.02%
+  ✓ $9.9M            column_sum     sum of revenue over 3 rows = 9,900,000
+  ✓ 144,300          column_sum     sum of orders over 3 rows = 144,300
+  ✗ $71              no cell, sum, difference, or ratio within tolerance
 ```
+
+APAC's real average order value is $55. The model wrote a fluent sentence with a number that is not in the data and cannot be derived from it, and the other four figures are fine. That is the failure this library exists for.
 
 Zero dependencies. Deterministic. About 150 µs for a typical answer, 1 ms for 200 rows. Python 3.10+.
 
@@ -29,9 +40,9 @@ pip install figured
 
 ## Why
 
-Text-to-SQL agents and RAG-over-tables pipelines validate the query and trust the prose. The model reads the rows and writes a paragraph, and nothing checks that the paragraph's numbers came from the rows. When it invents a figure, the SQL was fine, the rows were fine, and the user sees a confident wrong number.
+Text-to-SQL agents validate the query and trust the prose. The model reads the rows and writes a paragraph, and nothing checks that the paragraph's numbers came from the rows. When it invents a figure, the SQL was fine, the rows were fine, and the user sees a confident wrong number.
 
-The usual answer is an LLM judge, which is slow, costs money per answer, and is itself wrong sometimes: in one published test, a faithfulness metric scored a fabricated price as fully faithful five times in a row. `figured` is the deterministic check that runs on every answer before a judge is needed. It is the "grounding" step the authors of this library shipped inside a Census data agent, extracted so anyone can use it.
+The same thing happens wherever a model turns structured data into sentences: BI copilots, finance and KPI narratives, spreadsheet and CSV assistants, agents summarizing an API response. The usual answer is an LLM judge, which is slow, costs money per answer, and is itself wrong sometimes: in one published test, a faithfulness metric scored a fabricated price as fully faithful five times in a row. `figured` is the deterministic check that runs on every answer before a judge is needed.
 
 ## What counts as grounded
 
@@ -47,7 +58,7 @@ Every substantive number in the text must be within a tolerance (default 1.5 per
 | percent | "72.8% of California" | `pop[Texas] ÷ pop[California] = 72.8%` |
 | percent change | "grew 2.3%" | `(y2020 − y2019) ÷ y2019 = 2.3%` |
 
-Differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between 39 and 40 million" is grounded when a candidate lies inside it. Numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 counties in 2020" is not a claim about the data.
+Differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between 39 and 40 million" is grounded when a candidate lies inside it. Plain numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 regions in 2024" is not a claim about the data; a figure with a currency symbol or a percent sign is always checked.
 
 Two rules keep the search honest. A figure written as a percentage is searched as `a ÷ b × 100`, and a plain figure as `a ÷ b`, never both, so "150" cannot pass by coincidentally matching a 150% share. And the pairwise and adjacent-cell derivations cover the first `max_rows` rows (12 by default), which is the part of a result a model has usually read; cells and column sums cover every row. Raise `max_rows` if your prompt includes more.
 
@@ -63,6 +74,7 @@ Each grounded figure carries the derivation that matched, so a reviewer can chec
 - a pandas DataFrame
 - a DB-API cursor after `execute`
 - several result sets at once: `trace(text, results=[rows_a, rows_b])`
+- an API or tool response, since a list of JSON objects is a list of dicts
 
 Numeric strings in the rows are parsed by default, so `"39,346,023"`, `"$1,200"`, and `"12%"` all count. Decimals from database drivers are handled. Booleans are not numbers.
 
@@ -86,7 +98,7 @@ trace(answer, rows, ignore_below=0, ignore_years=False)
 |---|---|---|
 | `rel_tolerance` | 0.015 | relative error allowed, covers rounding to three significant figures |
 | `abs_tolerance` | 0 | absolute error allowed in addition |
-| `ignore_below` | 100 | figures at or below this are counts of things, not claims |
+| `ignore_below` | 100 | plain figures at or below this are counts of things, not claims; currency and percent figures are always checked |
 | `ignore_years` | True | bare four-digit integers in `year_range` are skipped |
 | `unmatched_percent` | "pass" | shares of totals outside the rows are common, so a lone percentage passes |
 | `max_rows`, `max_cells` | 12, 40 | how much of the result feeds the pairwise and adjacent-sum search |
@@ -169,7 +181,7 @@ Behavior is pinned by the conformance vectors in `tests/vectors/`. A port in ano
 
 ## Origin
 
-Built inside a Census data agent whose answers had to be traceable to the ACS rows behind them. The first version only derived values within a row, so a correct "about $10,900 higher" comparison across two state rows was flagged as suspect. That false flag is now a named test vector, and it is why the defaults lean toward trusting the model when the arithmetic works out.
+Extracted from a data agent whose answers had to be traceable to the rows behind them. Its first grounding check derived values only within a row, so a correct "about $10,900 higher" comparison across two rows was flagged as suspect. That false flag is now a named test vector, and it is why the defaults lean toward trusting the model when the arithmetic works out.
 
 ## License
 

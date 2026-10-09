@@ -15,7 +15,7 @@ from figured.extract import Figure, extract_numbers
 from figured.policy import DERIVATIONS, LENIENT, STRICT, Policy
 from figured.report import Report, Result
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "DERIVATIONS",
     "LENIENT",

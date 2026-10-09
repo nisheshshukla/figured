@@ -3,14 +3,14 @@
 from figured import trace
 
 rows = [
-    {"state": "California", "population": 39_346_023, "moe": 79_849},
-    {"state": "Texas", "population": 28_635_442, "moe": 65_120},
+    {"region": "North America", "revenue": 4_820_000, "orders": 61_300},
+    {"region": "Europe", "revenue": 3_150_000, "orders": 47_900},
+    {"region": "APAC", "revenue": 1_930_000, "orders": 35_100},
 ]
 
 answer = (
-    "California has about 39.3 million people (±79,849), roughly 10.7 million more than Texas. "
-    "Texas is 72.8% of California's size. Combined they hold 68 million people, "
-    "and about 4.1 million of them moved last year."
+    "North America brought in $4.82M, about 53% more than Europe, and the three regions "
+    "combined reached $9.9M on 144,300 orders. Average order value in APAC was $71."
 )
 
 report = trace(answer, rows)

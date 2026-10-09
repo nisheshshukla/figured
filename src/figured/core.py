@@ -49,7 +49,7 @@ def _without_evidence(fig: Figure, pol: Policy) -> Result:
 def _check(fig: Figure, index: Index, pol: Policy) -> Result:
     if _is_year(fig, pol):
         return Result(fig, "ignored", reason="year")
-    if not fig.is_percent and abs(fig.value) <= pol.ignore_below:
+    if not (fig.is_percent or fig.is_currency) and abs(fig.value) <= pol.ignore_below:
         return Result(fig, "ignored", reason="small")
     match = index.lookup(fig.value, pol, is_percent=fig.is_percent)
     if match is None and fig.is_range:

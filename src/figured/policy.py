@@ -14,7 +14,8 @@ class Policy:
 
     rel_tolerance: relative error allowed between a figure and a candidate (0.015 is 1.5%).
     abs_tolerance: absolute error allowed in addition to the relative one.
-    ignore_below: figures at or below this absolute value are not checked (counts of items, rankings).
+    ignore_below: plain figures at or below this value are not checked (counts of items, rankings);
+        currency and percent figures are always checked.
     ignore_years: treat bare four-digit integers between year_range as years and skip them.
     unmatched_percent: "pass" lets a percentage through when nothing matches, since shares of a
         total outside the rows are common; "flag" treats it like any other figure.
