@@ -2,6 +2,9 @@
 
 Requires the `judge` extra: pip install "figured[judge]". The judge receives the question, the
 rows, and the answer, nothing else, and returns a strict verdict.
+
+Needs an Anthropic API key: set ANTHROPIC_API_KEY in the environment (keys are created at
+console.anthropic.com), or pass `client=anthropic.Anthropic(api_key=...)`.
 """
 
 from __future__ import annotations

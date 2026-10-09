@@ -149,11 +149,28 @@ if not report.ok:
 pip install "figured[judge]"
 ```
 
+The judge calls Claude through the Anthropic SDK, so it needs an API key. Create one at console.anthropic.com under API Keys, then put it in the environment:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
 ```python
 from figured.judge import judge
 
-judge("Which region performed best?", answer, rows)   # {"verdict": "fail", "issues": ["comparison reversed"], ...}
+judge("Which region performed best?", answer, rows)
+# {"verdict": "fail", "faithful": False, "responsive": True, "caveats_ok": True,
+#  "issues": ["comparison reversed"], "model": "claude-opus-5"}
 ```
+
+It reads the key from the environment by default. To use a different model, a different key, or a client you already have, pass them in:
+
+```python
+import anthropic
+judge(question, answer, rows, model="claude-sonnet-5", client=anthropic.Anthropic(api_key="..."))
+```
+
+Each call is one model request over the question, up to 30 rows per result set, and the answer. Run `trace` on everything and the judge on a sample; the core library never calls a model.
 
 ## What it does not do
 
