@@ -1,0 +1,102 @@
+[
+  {
+    "label": "gpt-4.1-2025-04-14 telecom",
+    "runs_fail": 300,
+    "flagged_fail": 0,
+    "base_flagged_fail": 0,
+    "calls": 3041,
+    "runs_ok": 156,
+    "flagged_ok": 0,
+    "base_flagged_ok": 0,
+    "seconds": 14.4,
+    "wrong": {
+      "write to a tool the task never required": 55,
+      "identifier": 3,
+      "not checked (no digits, names, enums, small counts)": 1
+    },
+    "wrong_flag": {
+      "write to a tool the task never required": 0,
+      "identifier": 0,
+      "not checked (no digits, names, enums, small counts)": 0
+    },
+    "wrong_base": {
+      "write to a tool the task never required": 0,
+      "identifier": 0,
+      "not checked (no digits, names, enums, small counts)": 0
+    },
+    "corruptions": {
+      "identifier": [
+        430,
+        430,
+        430
+      ]
+    },
+    "substitutions": {
+      "identifier": [
+        304,
+        0,
+        0
+      ]
+    },
+    "examples": {}
+  },
+  {
+    "label": "claude-3-7-sonnet-20250219 telecom",
+    "runs_fail": 231,
+    "flagged_fail": 3,
+    "base_flagged_fail": 1,
+    "calls": 3121,
+    "runs_ok": 225,
+    "flagged_ok": 2,
+    "base_flagged_ok": 0,
+    "seconds": 21.4,
+    "wrong": {
+      "write to a tool the task never required": 90,
+      "not checked (no digits, names, enums, small counts)": 1,
+      "number": 1
+    },
+    "wrong_flag": {
+      "write to a tool the task never required": 2,
+      "not checked (no digits, names, enums, small counts)": 0,
+      "number": 1
+    },
+    "wrong_base": {
+      "write to a tool the task never required": 0,
+      "not checked (no digits, names, enums, small counts)": 0,
+      "number": 1
+    },
+    "corruptions": {
+      "identifier": [
+        667,
+        667,
+        667
+      ],
+      "date": [
+        1,
+        0,
+        0
+      ]
+    },
+    "substitutions": {
+      "identifier": [
+        522,
+        0,
+        0
+      ],
+      "date": [
+        2,
+        0,
+        0
+      ]
+    },
+    "examples": {
+      "flag_ok": [
+        "claude-3-7-sonnet-20250219_telecom_default_gpt-4.1-2025-04-14_4trials:[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_enabled_off[PERSONA:Easy]/3 set_network_mode_preference.mode = '4g_5g_preferred'",
+        "claude-3-7-sonnet-20250219_telecom_default_gpt-4.1-2025-04-14_4trials:[mobile_data_issue]bad_vpn|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]/3 set_network_mode_preference.mode = '4g_5g_preferred'"
+      ],
+      "real_catch": [
+        "claude-3-7-sonnet-20250219_telecom_default_gpt-4.1-2025-04-14_4trials:[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_sms_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:None]/3 refuel_data.gb_amount = 0.5, expected ['2.0']"
+      ]
+    }
+  }
+]

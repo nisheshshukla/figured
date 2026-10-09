@@ -302,6 +302,8 @@ class RunMonitor:
             if hint and any(k in hint and hint[k] == value for k in ("default", "const")):
                 continue
             kind = classify(value, hint)
+            if kind is None and _ruled_string(value, hint) and pol.rule_for(where) is not None:
+                kind = "phrase" if " " in value.strip() else "identifier"
             if kind is None:
                 if isinstance(value, str) and pol.free_text == "extract" and _is_free_text(value):
                     found = extract_text_values(value)
@@ -529,6 +531,14 @@ def _read_as_of(text: str) -> dt.date | None:
                 except ValueError:
                     continue
     return None
+
+
+def _ruled_string(value: Any, hint: dict[str, Any] | None) -> bool:
+    """A short string a source rule should still check although it has no digits: a password, a
+    user name. A rule is about where a value came from, whatever it looks like."""
+    if not isinstance(value, str) or not value.strip() or _is_free_text(value):
+        return False
+    return not (hint and "enum" in hint)
 
 
 def _is_free_text(s: str) -> bool:

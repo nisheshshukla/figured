@@ -1,10 +1,57 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
-- Agent checks are faster on long sessions and large tool results, with identical results on all 1,980 benchmark runs (verified by a fingerprint of every report). `before_call` p99 for 400 KB of session text went from 78 ms to 0.41 ms, and the first call after a 3.5 MB tool result from 1.5 s to under 2 ms. Numbers are indexed in log-scale buckets and dates by month and day, all at ingest; JSON string values are scanned in one pass; per-source indexing is capped at 1 MB.
-- A malformed or deeply nested JSON tool result no longer raises `RecursionError` during number indexing.
+Agent checks, made honest and fast. An independent review found that 0.2.0's headline overstated what it caught, that several heuristics opened holes, and that unknown transcript formats were reported as clean. This release fixes those and re-measures on held-out data. See `docs/agent-eval-results.md`.
+
+What it claims.
+
+- The claim is now "values absent from context": a value an agent passes to a tool that appears nowhere in what it saw and does not follow from it. Messages say "is not in context".
+- Published alongside: real-error recall against ground truth (3.5% on tau-bench, 2.0% on held-out tau2-bench), a substring baseline, and the rate at which a real value in the wrong place passes (100%).
+
+Stricter where it was loose.
+
+- Argument amounts must match to the cent and in sign. A multiple counts only for a count the user stated or a list's length; integers in tool results no longer count as counts.
+- An identifier must match as a whole token. A digit run inside another ID no longer vouches for an argument. A `#W`-style prefix is added only to digits the user typed, and only when IDs of that exact shape were seen.
+- A date without a year takes the year nearest the reference date. Date shifts follow the direction the user asked for, are not applied to birth dates, and apply only to dates within two years of now.
+- A phrase built from parts needs its words too, and its numbers must sit beside words in their source.
+- Nothing laundered counts as a source:
+  - A total in the agent's own message counts only if its operands were found.
+  - `pure_tools` (a calculator) do not vouch for output built from made-up inputs.
+  - A tool result does not vouch for a made-up value it echoes back.
+  - Examples in the system prompt ("IDs look like #W0000000") are not data.
+- A source rule checks any string, with or without digits, such as a password.
+
+Looser where it was wrong.
+
+- Identifiers match regardless of case and separators: `ORD 88213` and `ORD-88213`, IBANs with spaces, `(415) 555-0132` and `+14155550132`.
+- URLs match across scheme and `www.`, but not across hosts.
+- Allowed amounts now include a stated percentage of an amount (a tip, a tax) and two money fields of one small source added together (two item prices, a price and its tax).
+- English number words in what the user says ("two hundred fifty").
+- Dates in Spanish, French, German, Portuguese, Italian, and Chinese or Japanese forms, "end of the month", and a reference date written in prose ("Today is Friday, October 9, 2026").
+- Values matching a tool schema's `default` or `const` are skipped.
+- Numeric strings ("$49.90") are checked as amounts. Integer IDs passed as numbers match their quoted forms.
+
+Formats and robustness.
+
+- `check_run` reads OpenAI Chat Completions (including legacy `function_call` and the `developer` role), the OpenAI Responses API, Anthropic, Gemini, Bedrock Converse, LangChain (objects, dicts, and serialized messages), tau2-bench, and AgentDojo.
+- A message in any other shape raises `UnrecognizedMessage`, so a transcript is never reported clean because nothing in it was read. Pass `on_unknown="warn"` or `"ignore"` to relax this.
+- Arguments nested deeper than 64 levels produce an `unchecked` finding instead of passing.
+- NaN and infinite amounts are unsourced instead of crashing.
+- Free-text arguments are scanned for long digit runs, such as an account number in a memo.
+- An `"error": null` field no longer counts as an error.
+
+Speed.
+
+- Everything is parsed when a message or tool result arrives, off the critical path. Numbers are indexed in log-scale buckets and dates by month and day.
+- JSON string values are scanned in one pass, and per-source indexing is capped at 1 MB.
+- `before_call` takes 23 µs at the median and 0.16 ms at p99 on tau-bench. With 400 KB of session text, p99 went from 78 ms in 0.2.0 to 0.42 ms.
+- A malformed or deeply nested JSON tool result no longer raises `RecursionError` during indexing.
 - `figured.extract.scan_values`: the values `extract_numbers` returns, without building `Figure` objects.
+
+Benchmarks.
+
+- `benchmarks/agent_eval.py` replaces `agent_runs.py` and `agent_groundtruth.py`. It covers tau-bench (development), tau2-bench telecom and AgentDojo (held out), real-error recall, a substring baseline, corruptions, and substitutions. Results are in `benchmarks/results/`.
 
 ## 0.2.0
 

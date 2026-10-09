@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "figured"
-version = "0.2.0"
+version = "0.3.0"
 description = "Show your work: deterministic online evals that trace every number in an LLM answer, and every value an agent passes to a tool, to its source."
 readme = "README.md"
 license = "MIT"

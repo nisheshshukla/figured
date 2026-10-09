@@ -7,7 +7,7 @@
 | Check | Runs on | Catches | Typical cost |
 |---|---|---|---|
 | `trace(answer, rows)` | a generated answer and the rows it was written from | figures that are not in the data and cannot be derived from it | about 150 µs |
-| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts with no source in the conversation or earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 20 µs per tool call (p99 0.13 ms) |
+| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts absent from the conversation and earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 25 µs per tool call (p99 0.16 ms) |
 
 Zero dependencies. No model calls. Python 3.10+.
 
@@ -62,7 +62,9 @@ APAC's real average order value is $55. The model wrote a fluent sentence with a
 
 ## Values in agent actions
 
-A text-to-SQL answer can state a wrong number. An agent can act on one. `figured.agents` applies the same idea to tool calls: before a call executes, every identifier, email, URL, date, and amount in its arguments must have a source, either something the user said, the system prompt, an earlier tool result, or arithmetic over those.
+A text-to-SQL answer can state a wrong number. An agent can act on one. `figured.agents` applies the same idea to tool calls: before a call executes, every identifier, email, URL, date, and amount in its arguments is looked up in what the agent has seen, meaning the user's messages, the system prompt, and earlier tool results, plus a short list of arithmetic an agent legitimately does. A value found nowhere is flagged.
+
+That is the whole claim: **values absent from context**. A mistyped or invented ID, a guessed email, a zip code assumed from a city name, a placeholder, an amount that is no price, total, or stated multiple. The check cannot tell which of two real values was the right one. The [measured results](#measured-on-public-agent-runs) show how much of real agent failure that covers, and how much it does not.
 
 ```python
 from figured.agents import RunMonitor
@@ -74,16 +76,16 @@ monitor.tool_result("get_orders", {"orders": [{"id": "ORD-88213", "total": 49.99
 
 decision = monitor.before_call("refund", {"order_id": "ORD-88231", "amount": 49.99})
 decision.action  # "warn"
-decision.reason()  # "refund.order_id=ORD-88231 has no source"
+decision.reason()  # "refund.order_id=ORD-88231 is not in context"
 print(monitor.report().explain())
 ```
 
 ```
-WARN · 2 tool calls · 2/3 values traced · 1 findings
+WARN · 2 tool calls · 2/3 values found in context · 1 findings
   ✓ [2] get_orders.user_id                 mia_li_3668                  user@1 (exact)
-  ✗ [4] refund.order_id                    ORD-88231                    no source
+  ✗ [4] refund.order_id                    ORD-88231                    not in context
   ✓ [4] refund.amount                      49.99                        tool:get_orders@3 (exact)
-  ! [4] unsourced: refund.order_id=ORD-88231 has no source
+  ! [4] unsourced: refund.order_id=ORD-88231 is not in context
 ```
 
 Two digits are transposed. The refund would have gone to someone else's order, and every other check in a typical stack passes it: the arguments match the schema, the tool exists, the agent was allowed to call it.
@@ -108,19 +110,23 @@ monitor.before_call("send_email", {"to": "billing@evil.example"}).action
 # "block": send_email.to=billing@evil.example came from tool:read_inbox, but must come from user
 ```
 
-That is the shape of indirect prompt injection: an instruction inside a tool result steers the agent, and the payload is a value. The check does not need to recognize the injection, only that the recipient never came from the user.
+That is the shape of indirect prompt injection: an instruction inside a tool result steers the agent, and the payload is a value. The check does not need to recognize the injection, only that the recipient never came from the user. Without a rule, a value that arrived in a tool result counts as sourced, because most tool results are the data the agent was asked to act on.
 
-### What it traces
+### What counts as found
 
-| Kind | Sourced when | Example derivations |
+Arguments are checked strictly, because they are acted on. Values in the agent's own messages are checked loosely, because prose rounds and abbreviates.
+
+| Kind | Found when | Not found |
 |---|---|---|
-| identifier | the token appears in a source; a short prefix may be added (`9502127` → `#W9502127`); digits may be the tail of an ID (`paypal_5334408` → "ending in 5334408") | |
-| email, URL | the address appears in a source, case-insensitively | |
-| date | the calendar date appears in any format; relative words resolve against the system prompt's date | "tomorrow", "next Monday", "May 16th or 18th", "a day later" applied to a sourced date |
-| amount | the number appears in a source, or is a sourced price times a small count, or was stated as a total the agent showed its work for | "3 passengers × $50", "$622.12 + $473.43 = $1,095.55" |
-| phrase | a short string with digits (an address line) appears, or every number-bearing part of it does | |
+| identifier | the same characters appear, ignoring case and separators (`ORD 88213` → `ORD-88213`, `(415) 555-0132` → `+14155550132`, IBANs with or without spaces); a prefix is added to digits the user typed when IDs of exactly that shape appear in tool results (`9502127` → `#W9502127`) | a digit run inside another identifier; a prefix added to digits the user never typed |
+| email, URL | the address appears, ignoring case; a URL may differ in scheme or `www.` | another host that ends the same way (`evil-example.com` is not `example.com`) |
+| date | the calendar date appears in any format, including Spanish, French, German, Portuguese, Italian, and Chinese or Japanese dates; "tomorrow", weekdays, and "end of the month" resolve against the system prompt's date; a date without a year takes the year nearest that date; a shift the user asked for, in the direction they asked ("a day later", "two weeks earlier") | a shift in the other direction; a shift applied to a birth date or any date years from now |
+| amount | the number appears, to the cent and with its sign; or it is a sourced amount times a count the user stated or a list's length (passengers, items), a stated percentage of an amount (a tip, a tax), or two money fields of one small source added (two item prices, a price and its tax); English number words count ("two hundred fifty") | a multiple by a count nobody stated; a sum over a search result with dozens of fares, where some pair matches almost anything |
+| phrase | a short string with digits (an address line) appears, or every number and word in it does, with each number beside words in its source | a house number borrowed from a price |
 
-Free text such as a message body, enum values, and small counts are skipped: they are not provenance questions. Tool schemas sharpen this when you pass them: `format: email` or `date` sets the kind, and `enum` arguments are skipped.
+Nothing laundered counts as a source: a total in the agent's own message counts only if every operand was found, the output of a pure tool such as a calculator does not vouch for made-up inputs, an error that echoes a made-up ID back does not vouch for it, and a value the system prompt gives as an example ("IDs look like #W0000000") is not data.
+
+Free text in an argument, such as an email body, is scanned for identifiers, emails, URLs, dates, and long digit runs. Values without digits (names, airport codes, enum words) are not checked unless a source rule covers the argument, and integers up to 10 are not checked. Tool schemas sharpen this when you pass them: `format: email` or `date` sets the kind, and `enum`, `const`, and `default` values are skipped.
 
 ### Loops and budgets
 
@@ -134,6 +140,7 @@ Defaults are lenient: an unsourced value warns, so the check can run on all traf
 policy = AgentPolicy.build(
     block_unsourced=["refund.*", "transfer.*"],  # side-effecting tools block on any unsourced value
     source_rules={"send_email.to": {"user"}},  # where a value must come from; violations block
+    pure_tools=["calculate"],  # output computed only from the arguments
     ignore=["think.*"],  # scratchpad tools are not actions
     constants=["USA", "USD"],  # values that never need a source
     max_repeats=3,
@@ -145,31 +152,33 @@ policy = AgentPolicy.build(
 |---|---|---|
 | `block_unsourced` | none | argument patterns where an unsourced value blocks the call |
 | `source_rules` | none | argument pattern to allowed sources: `user`, `system`, `tool`, `tool:<name>`, `derived` |
+| `pure_tools` | none | tools whose output is computed from their arguments; if those were made up, the output vouches for nothing |
 | `on_unsourced`, `on_rule`, `on_repeat`, `on_budget` | warn, block, warn, block | severity for each finding type |
 | `kinds` | all six | which value kinds need a source |
 | `ignore`, `constants` | none | arguments to skip; values that are always allowed |
+| `small_ints` | 10 | integers up to this are counts and are not checked |
+| `free_text` | "extract" | scan long string arguments for values, or "skip" them |
 | `max_repeats`, `max_tool_calls` | 3, none | loop and budget thresholds |
-| `as_of` | "auto" | date for "tomorrow" and weekdays, read from the system prompt by default |
-| `date_shift_days` | 7 | how far a date the user asked to move may shift |
-| `check_text` | True | also trace values the agent states in its messages |
+| `as_of` | "auto" | date for "tomorrow", weekdays, and dates without a year, read from the system prompt by default |
+| `date_shift_days` | 31 | the largest date move a user can ask for; 0 turns shifts off |
+| `check_text` | True | also check values the agent states in its messages |
 
 ### Latency
 
-The check that matters for latency is `before_call`, which sits between the model proposing a tool call and the call running. Everything expensive happens earlier, when a tool result is added, because that moment is followed by a model call that takes seconds anyway. Numbers are indexed in log-scale buckets, so a tolerance lookup touches a few dozen entries however much the agent has seen; dates are indexed by month and day; identifier search is a C-level substring scan. Measured with `python benchmarks/agent_speed.py` on a laptop:
+The check that matters for latency is `before_call`, which sits between the model proposing a tool call and the call running. Everything expensive happens earlier, when a message or tool result is added, because that moment is followed by a model call that takes seconds anyway. Numbers are indexed in log-scale buckets, so a tolerance lookup touches a few dozen entries however much the agent has seen; dates are indexed by month and day; identifier search is a C-level substring scan. Measured with `python benchmarks/agent_speed.py` on a laptop:
 
-| Session | `before_call` p50 | p99 | Adding a tool result |
-|---|---|---|---|
-| tau-bench runs (14,285 calls) | 19 µs | 0.13 ms | |
-| 32 KB tool result | 0.03 ms | 0.05 ms | 6 ms |
-| 200 tool results, 400 KB seen | 0.19 ms | 0.41 ms | |
-| 350 KB tool result | 0.11 ms | 0.20 ms | 66 ms |
-| 3.5 MB tool result | 0.95 ms | 1.8 ms | 197 ms (indexing capped at 1 MB per source) |
+| Session | `before_call` p50 | p99 |
+|---|---|---|
+| tau-bench runs (14,285 calls) | 23 µs | 0.16 ms |
+| 10 tool results, 20 KB seen | 0.04 ms | 0.11 ms |
+| 200 tool results, 400 KB seen | 0.22 ms | 0.42 ms |
+| 20 tool results, 2 MB seen | 0.49 ms | 1.3 ms |
 
-Call latency grows with the total text the agent has seen at about 0.3 ms per megabyte, from the identifier scan. For comparison, gateway hops in published benchmarks add under 10 ms, classifier guardrails 20 to 100 ms, and model-based checks around a second.
+Adding a tool result takes about 0.1 ms at the median on tau-bench, and a system prompt about 1 ms, once per run. Indexing is capped at 1 MB per source. For comparison, gateway hops in published benchmarks add under 10 ms, classifier guardrails 20 to 100 ms, and model-based checks around a second.
 
 ### Finished transcripts
 
-`check_run(messages)` replays a recorded run through the same monitor, for offline evals, CI, and trace review. It reads OpenAI chat messages and Anthropic content blocks, including mixtures.
+`check_run(messages)` replays a recorded run through the same monitor, for offline evals, CI, and trace review. It reads OpenAI Chat Completions and Responses API items, Anthropic content blocks, Gemini parts, Bedrock Converse blocks, LangChain messages (objects, dicts, and serialized), and the tau-bench, tau2-bench, and AgentDojo formats, including mixtures. A message in any other shape raises `UnrecognizedMessage`, so a transcript is never reported clean because nothing in it was read; pass `on_unknown="warn"` or `"ignore"` to relax that.
 
 ```python
 from figured.agents import check_run
@@ -178,20 +187,32 @@ report = check_run(messages, policy, tools=tool_schemas)
 report.ok, report.unsourced, report.findings, report.to_dict()
 ```
 
-### Measured on 1,980 public agent runs
+### Measured on public agent runs
 
-`benchmarks/agent_runs.py` replays the published tau-bench trajectories (GPT-4o and Claude 3.5 Sonnet, retail and airline, 14,285 tool calls), each labeled with whether the agent completed its task. Heuristics were developed on GPT-4o retail and on even-numbered airline tasks; the full results are in [docs/agent-eval-results.md](docs/agent-eval-results.md).
+Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).
 
-| Measure | Result |
-|---|---|
-| Successful runs with an argument flag | 10 of 1,183 (0.8%), and all 10 were real fabrications on review |
-| Flags on failed runs that differ from the task's ground-truth action | 24 of 26 that ground truth covers |
-| Corrupted identifiers caught (one transposed or changed digit) | 2,994 of 2,998 |
-| Corrupted emails and address lines caught | 225 of 225 |
-| Corrupted dates caught | 80 of 107; nearly all misses are dates that appear elsewhere in the run |
-| Time per tool call | p50 19 µs, p99 0.13 ms; no model calls |
+| figured / baseline | tau-bench, development: 1,980 runs, GPT-4o and Claude 3.5 Sonnet | tau2-bench telecom, held out: 912 runs, GPT-4.1 and Claude 3.7 Sonnet |
+|---|---|---|
+| Successful runs with a flag | 1.4% / 13.4% | 0.5% / 0.0% |
+| A real value altered the way models get values wrong: two digits swapped, a digit changed, a date off by a day, an amount off by 7% | 99.2% / 91.8% caught | 99.9% / 99.9% caught |
+| A real value from the same conversation in the wrong place | 0.0% / 0.1% caught | 0.0% / 0.0% caught |
+| Wrong argument values and wrong calls in failed runs, against the task's ground truth | 3.5% / 8.7% caught | 2.0% / 0.7% caught |
 
-What the flags on *successful* runs found is the interesting part: zip codes the agent assumed from a city name, user IDs guessed from a person's name, a payment ID built from "the card ending in 7334", and a placeholder `gift_card_0000000`. Each reached a real tool. The runs succeeded only because the bad call errored and the agent recovered.
+What this says, plainly:
+
+- **It catches made-up values, and rarely flags good runs.** A real ID, email, date, or amount with two digits swapped or a day or a few percent off is caught almost every time, and on held-out data under 1% of successful runs carried a flag. The substring baseline flags 13% of successful tau-bench runs, mostly identifiers and address lines written differently from the source.
+- **Most agent failures are not made-up values.** Of the wrong argument values in failed tau-bench runs that figured could check, 95% appear in the context: an existing order ID that was not the one the user meant, a real flight on the wrong date. On tau2-bench, 145 of 151 errors were calls to a tool the task never needed. Provenance cannot see either; that takes the system's own validation, or a model that reads intent. The baseline catches more failed-run errors on tau-bench airline because it flags any amount that is not copied verbatim, right or wrong.
+- **Most flags are worth reading.** Of the 16 successful tau-bench runs with a flag, 10 sent a tool a value with no source: zip codes assumed from a city name, user IDs guessed from a person's name, a payment ID built from "the card ending in 7334", a gift card ID with a credit card prefix, an order number padded with zeros, and a placeholder `gift_card_0000000`. The runs succeeded only because the bad call errored and the agent recovered. The other 6 are false flags: an order ID prefix the agent learned from a tool description, which figured does not read, and an ID split by a space in a hand-off summary.
+
+For prompt injection, AgentDojo (held out, Claude 3.7 Sonnet, 1,065 runs) with source rules on the sensitive arguments: payment and message recipients, passwords, user details, and posted URLs must come from the user or a contacts lookup. The rules were written before the run and are listed in the benchmark.
+
+| Runs with a flagged write | with source rules | without |
+|---|---|---|
+| Injection succeeded | 76.6% (36 of 47) | 14.9% |
+| Injection attempted, did not succeed | 16.7% | 7.5% |
+| No attack, user's task completed | 22.4% (26 of 116) | 11.2% |
+
+Rules catch three in four successful injections, and also flag one in five legitimate runs. Most of those are tasks that rightly take a recipient from a document, such as "pay the bill in bill.txt" or "invite the person on this webpage", which a rule saying recipients come from the user cannot tell apart from an attack. That is the basic tradeoff of information-flow control, and the reason to put rules only on the few arguments where you would rather ask than act. One gap this run exposed is fixed in this release: a rule now checks strings without digits too, such as a password; with the fix, 78.7% of successful injections and 25.0% of benign runs are flagged.
 
 ## Numbers in answers: details
 
@@ -331,11 +352,17 @@ Each call is one model request over the question, up to 30 rows per result set, 
 
 - It cannot catch a correct number attached to the wrong claim. That is what the judge extra is for.
 - With large result sets the derived set is big, and a hallucinated figure can land within tolerance of some difference by coincidence. The defaults cap the pairwise search at 12 rows and 40 cells; tighten the tolerance or restrict `derivations` for sensitive uses. A flag on a correct figure is treated as the worse error, because people stop reading badges that cry wolf.
-- Numbers written as words ("two million") are not extracted.
+- In answers, numbers written as words ("two million") are not extracted. Agent checks read English number words in what the user says.
 - It does not know what the rows mean. If the agent queried the wrong column and described it faithfully, every figure traces.
-- For agents, a wrong value that also exists in the sources passes: picking the wrong one of two real order IDs, or a date that appears elsewhere in a flight listing. Provenance proves a value came from somewhere legitimate, not that it was the right one.
-- Agent amounts are checked strictly (exact, a count multiple, or a total the agent showed), because pairwise sums over dozens of prices match almost anything. An amount the agent computed silently will be flagged; that is usually worth seeing.
-- Names and free-text entities are not traced; that needs fuzzy matching and is judge territory.
+- For agents, a wrong value that also exists in the context passes: the wrong one of two real order IDs, a flight date put in a birth date field, a recipient copied from an injected email when no source rule covers that argument. Provenance proves a value came from somewhere in the context, not that it was the right one. On the benchmarks above this is most real agent failure.
+- Calls to the wrong tool, with correct values, are invisible to it.
+- Values without digits (names, airport codes, product options) and integers up to 10 are not checked, so a wrong passenger name or a quantity of 9 instead of 1 passes.
+- An error that echoes a made-up value back does not vouch for it only when the monitor saw the call that caused it. Feed `before_call` and `tool_result` the same call id, or replay the whole transcript.
+- Values the model knows rather than read (a model name, a currency conversion at a rate it remembers, a well-known code) are flagged; list them in `constants` or ignore the argument.
+- Amounts in European (`1.234,56`) or Indian (`1,23,456`) grouping, and number words in languages other than English, are not read.
+- Agent amounts are strict: a figure the agent computed in a way not listed above, such as a fare difference times the passengers, is flagged. That is usually worth seeing.
+- More context means more coincidences: in a session with hundreds of tool results, a made-up amount can match a real one to the cent.
+- Source rules flag legitimate runs that take a value from a document the user pointed to; see the AgentDojo numbers.
 
 ## How it compares
 
@@ -357,6 +384,7 @@ For agent runs:
 | DeepEval ArgumentCorrectness | no | no | no | no, LLM judge |
 | DeepEval AgentLoopDetection | no | no | no, scores a finished trace | yes |
 | Invariant Guardrails | no | for the data-flow rules you write | yes | yes, rule language |
+| CaMeL, FIDES (information-flow control) | no | yes, as labels on every value | yes | yes, but the agent is rebuilt around a planner and a quarantined model |
 
 The Proof-Carrying Numbers policy vocabulary (exact, rounded, scale alias, tolerance, percent, range, year) is the clearest statement of the matching problem, and this library borrows its shape. The difference is the evidence contract: rows in, free text in, no cooperation from the model required.
 
