@@ -1,6 +1,6 @@
 # figured
 
-**Show your work.** Verify that every number in an LLM-generated answer traces to the rows it was written from.
+**Show your work.** A deterministic online eval for numbers: every figure in an LLM-generated answer is traced to the rows it was written from, on every answer, in microseconds.
 
 ```python
 from figured import trace
@@ -43,6 +43,18 @@ pip install figured
 Text-to-SQL agents validate the query and trust the prose. The model reads the rows and writes a paragraph, and nothing checks that the paragraph's numbers came from the rows. When it invents a figure, the SQL was fine, the rows were fine, and the user sees a confident wrong number.
 
 The same thing happens wherever a model turns structured data into sentences: BI copilots, finance and KPI narratives, spreadsheet and CSV assistants, agents summarizing an API response. The usual answer is an LLM judge, which is slow, costs money per answer, and is itself wrong sometimes: in one published test, a faithfulness metric scored a fabricated price as fully faithful five times in a row. `figured` is the deterministic check that runs on every answer before a judge is needed.
+
+## Where it sits in an eval stack
+
+Most evaluation of generated text is offline: a fixed dataset, a judge model, a score before deployment. That catches regressions but says nothing about the answer a user is reading right now. `figured` is built to run online, on every production answer, because it is deterministic and costs microseconds. The same call feeds all three layers:
+
+| Layer | What `figured` does there |
+|---|---|
+| Online eval | Runs on every live answer; the per-figure results go to logs and dashboards, so hallucinated numbers become a rate you can watch and alert on |
+| Guardrail | The same result decides what the user sees: a Grounded badge, or a caveat naming the figure that did not trace |
+| Offline eval and CI | As an assertion over a test set, it returns the same answer every run, so it can gate a merge |
+
+It is a complement to LLM-as-judge, not a replacement. A judge reads meaning and catches a correct number attached to the wrong claim; it costs a request and seconds, so it runs offline or on a sample. `figured` reads numbers and runs on everything. Together they cover each other's blind spot, and the cheap check is the one that tells you which answers deserve the expensive one.
 
 ## What counts as grounded
 
@@ -142,6 +154,8 @@ if not report.ok:
 **In promptfoo**, as a Python assertion: see `examples/promptfoo_assert.py`.
 
 **In DeepEval or any custom metric**, wrap `trace` and return `1 - len(report.ungrounded) / report.checked`.
+
+**As an online metric**, log `report.to_dict()` with the request id. The ungrounded rate per day, per model version, or per prompt version is the number that tells you when something regressed in production.
 
 **With a model judge for the rest.** Arithmetic cannot see a wrong word around a right number: "Europe outperformed North America" with the two correct revenue figures reversed passes. The optional `judge` extra sends the question, the rows, and the answer to a model and returns a strict verdict on faithfulness, responsiveness, and caveats:
 
