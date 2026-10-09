@@ -1,9 +1,14 @@
-"""Everything the rows could legitimately produce: cells, sums, differences, ratios, percentages."""
+"""Everything the rows could legitimately produce, searched on demand rather than enumerated.
+
+Cells, column sums, and adjacent-cell sums are indexed once. Differences, ratios, percentages,
+and percent changes are found per figure by solving for the partner cell and bisecting for it,
+so the cost is O(cells · log cells) per figure instead of O(cells²) up front.
+"""
 
 from __future__ import annotations
 
-import bisect
-import itertools
+from bisect import bisect_left, bisect_right
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from figured.evidence import Cell, Evidence
@@ -20,7 +25,7 @@ RANK = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Candidate:
     value: float
     kind: str
@@ -31,7 +36,7 @@ class Candidate:
         return RANK[self.kind]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Match:
     candidate: Candidate
     error: float
@@ -59,113 +64,296 @@ def fmt(v: float) -> str:
     return f"{v:,.4g}"
 
 
-def build_candidates(ev: Evidence, policy: Policy) -> list[Candidate]:
-    allowed = policy.derivations
-    out: list[Candidate] = []
-
-    for rs in ev.results:
-        for row in rs.rows:
-            for c in row:
-                if "cell" in allowed:
-                    out.append(Candidate(c.value, "cell", f"{c.ref()} = {fmt(c.value)}"))
-            if "row_sum" in allowed:
-                out.extend(_row_sums(row))
-        if "column_sum" in allowed:
-            out.extend(_column_sums(rs.rows))
-
-    flat = [c for rs in ev.results for row in rs.rows[: policy.max_rows] for c in row][: policy.max_cells]
-    if any(k in allowed for k in ("difference", "ratio", "percent", "percent_change")):
-        for a, b in itertools.permutations(flat, 2):
-            out.extend(_pair(a, b, allowed))
-    return out
-
-
-def _row_sums(row: list[Cell]) -> list[Candidate]:
-    out: list[Candidate] = []
-    n = len(row)
-    for i in range(n):
-        for j in range(i + 2, min(n, i + 6) + 1):
-            part = row[i:j]
-            total = sum(c.value for c in part)
-            out.append(
-                Candidate(
-                    total,
-                    "row_sum",
-                    f"{part[0].column}..{part[-1].column}[{part[0].label}] summed = {fmt(total)}",
-                )
-            )
-    return out
-
-
-def _column_sums(rows: list[list[Cell]]) -> list[Candidate]:
-    by_col: dict[str, list[Cell]] = {}
-    for row in rows:
-        for c in row:
-            by_col.setdefault(c.column, []).append(c)
-    out: list[Candidate] = []
-    for col, cells in by_col.items():
-        if len(cells) < 2:
-            continue
-        total = sum(c.value for c in cells)
-        out.append(Candidate(total, "column_sum", f"sum of {col} over {len(cells)} rows = {fmt(total)}"))
-    return out
-
-
-def _pair(a: Cell, b: Cell, allowed: frozenset[str]) -> list[Candidate]:
-    out: list[Candidate] = []
-    if "difference" in allowed:
-        d = a.value - b.value
-        out.append(
-            Candidate(d, "difference", f"{a.ref()} − {b.ref()} = {fmt(a.value)} − {fmt(b.value)} = {fmt(d)}")
-        )
-    if b.value:
-        if "ratio" in allowed:
-            r = a.value / b.value
-            out.append(Candidate(r, "ratio", f"{a.ref()} ÷ {b.ref()} = {fmt(r)}"))
-        if "percent" in allowed:
-            p = a.value / b.value * 100
-            out.append(Candidate(p, "percent", f"{a.ref()} ÷ {b.ref()} = {fmt(p)}%"))
-        if "percent_change" in allowed:
-            pc = (a.value - b.value) / b.value * 100
-            out.append(Candidate(pc, "percent_change", f"({a.ref()} − {b.ref()}) ÷ {b.ref()} = {fmt(pc)}%"))
-    return out
+Scorer = Callable[[float], float | None]
 
 
 class Index:
-    """Sorted candidates for tolerance lookups by absolute value."""
+    """Sorted views over the evidence plus on-demand derivation search."""
 
-    def __init__(self, candidates: list[Candidate]) -> None:
-        self._items = sorted(((abs(c.value), c) for c in candidates), key=lambda t: t[0])
-        self._keys = [k for k, _ in self._items]
+    def __init__(self, ev: Evidence, policy: Policy) -> None:
+        self.ev = ev
+        self.policy = policy
+        allowed = policy.derivations
+        self.allowed = allowed
 
-    def __len__(self) -> int:
-        return len(self._items)
+        sets = ev.results
+        flat_abs: list[float] = []
+        self.set_start: list[int] = []
+        for rs in sets:
+            self.set_start.append(len(flat_abs))
+            flat_abs.extend(map(abs, rs.values))
+        self.flat_abs = flat_abs
+        if "cell" in allowed and flat_abs:
+            order = sorted(range(len(flat_abs)), key=flat_abs.__getitem__)
+            self.cell_keys = [flat_abs[i] for i in order]
+            self.cell_order = order
+        else:
+            self.cell_keys = []
+            self.cell_order = []
 
-    def lookup(self, value: float, policy: Policy) -> Match | None:
+        agg: list[tuple[float, str, str]] = []
+        if "column_sum" in allowed:
+            agg.extend(self._column_sums())
+        agg.sort(key=lambda t: t[0])
+        self.agg_keys = [a for a, _, _ in agg]
+        self.agg_items = agg
+        self._row_sums: list[tuple[float, int, int, int, int]] | None = None
+        self._row_sum_keys: list[float] = []
+
+        pair_idx: list[int] = []
+        for rs, base in zip(sets, self.set_start, strict=True):
+            limit = rs.row_start[min(policy.max_rows, len(rs.row_start) - 1)]
+            pair_idx.extend(range(base, base + limit))
+        pair_idx = pair_idx[: policy.max_cells]
+        signed = self._signed
+        pair_idx.sort(key=signed)
+        self.pair_vals = [signed(i) for i in pair_idx]
+        self.pair_refs = pair_idx
+        by_abs = sorted(pair_idx, key=flat_abs.__getitem__)
+        self.pair_abs = [flat_abs[i] for i in by_abs]
+        self.pair_abs_refs = by_abs
+
+    def _signed(self, g: int) -> float:
+        rs_i = bisect_right(self.set_start, g) - 1
+        return self.ev.results[rs_i].values[g - self.set_start[rs_i]]
+
+    def cell(self, g: int) -> Cell:
+        rs_i = bisect_right(self.set_start, g) - 1
+        return self.ev.results[rs_i].cell(g - self.set_start[rs_i])
+
+    def lookup(self, value: float, policy: Policy, *, is_percent: bool = False) -> Match | None:
         v = abs(value)
-        lo = min(v * (1 - policy.rel_tolerance), v - policy.abs_tolerance)
-        hi = max(v * (1 + policy.rel_tolerance), v + policy.abs_tolerance)
-        best: Match | None = None
-        for k, c in self._between(lo, hi):
-            if not policy.close(v, k):
-                continue
-            err = abs(v - k) / k if k else abs(v - k)
-            if best is None or (c.rank, err) < (best.candidate.rank, best.error):
-                best = Match(c, err)
-        return best
+        tol = max(v * policy.rel_tolerance, policy.abs_tolerance)
 
-    def lookup_range(self, lo: float, hi: float, policy: Policy) -> Match | None:
-        """A stated range is grounded when some candidate lies inside it (with tolerance at the edges)."""
+        def score(d: float) -> float | None:
+            if not policy.close(v, d):
+                return None
+            return abs(v - d) / d if d else abs(v - d)
+
+        return self._search(v - tol, v + tol, v, score, is_percent)
+
+    def lookup_range(self, lo: float, hi: float, policy: Policy, *, is_percent: bool = False) -> Match | None:
         lo_t = min(lo * (1 - policy.rel_tolerance), lo - policy.abs_tolerance)
         hi_t = max(hi * (1 + policy.rel_tolerance), hi + policy.abs_tolerance)
-        best: Match | None = None
-        for k, c in self._between(lo_t, hi_t):
-            err = 0.0 if lo <= k <= hi else min(abs(k - lo), abs(k - hi)) / max(k, 1e-12)
-            if best is None or (c.rank, err) < (best.candidate.rank, best.error):
-                best = Match(c, err)
-        return best
 
-    def _between(self, lo: float, hi: float) -> list[tuple[float, Candidate]]:
-        start = bisect.bisect_left(self._keys, lo)
-        end = bisect.bisect_right(self._keys, hi)
-        return self._items[start:end]
+        def score(d: float) -> float | None:
+            if d < lo_t or d > hi_t:
+                return None
+            return 0.0 if lo <= d <= hi else min(abs(d - lo), abs(d - hi)) / max(d, 1e-12)
+
+        return self._search(lo_t, hi_t, (lo + hi) / 2, score, is_percent)
+
+    def _search(self, lo: float, hi: float, v: float, score: Scorer, is_percent: bool) -> Match | None:
+        allowed = self.allowed
+        if self.cell_keys:
+            m = self._best_sorted(self.cell_keys, lo, hi, score, self._cell_candidate)
+            if m:
+                return m
+        if self.agg_keys:
+            m = self._best_sorted(self.agg_keys, lo, hi, score, self._agg_candidate)
+            if m:
+                return m
+        if "row_sum" in allowed:
+            sums = self._row_sum_index()
+            if sums:
+                m = self._best_sorted(self._row_sum_keys, lo, hi, score, self._row_candidate)
+                if m:
+                    return m
+        if not self.pair_vals:
+            return None
+        if "difference" in allowed:
+            m = self._differences(lo, hi, score)
+            if m:
+                return m
+        kind = "percent" if is_percent else "ratio"
+        if kind in allowed:
+            m = self._ratios(lo, hi, kind, score)
+            if m:
+                return m
+        if "percent_change" in allowed:
+            m = self._percent_changes(lo, hi, score)
+            if m:
+                return m
+        return None
+
+    @staticmethod
+    def _best_sorted(
+        keys: list[float], lo: float, hi: float, score: Scorer, make: Callable[[int], Candidate]
+    ) -> Match | None:
+        best: tuple[float, int] | None = None
+        for i in range(bisect_left(keys, lo), bisect_right(keys, hi)):
+            err = score(keys[i])
+            if err is not None and (best is None or err < best[0]):
+                best = (err, i)
+        return Match(make(best[1]), best[0]) if best else None
+
+    def _cell_candidate(self, i: int) -> Candidate:
+        c = self.cell(self.cell_order[i])
+        return Candidate(c.value, "cell", f"{c.ref()} = {fmt(c.value)}")
+
+    def _agg_candidate(self, i: int) -> Candidate:
+        a, kind, text = self.agg_items[i]
+        return Candidate(a, kind, text)
+
+    def _row_candidate(self, i: int) -> Candidate:
+        assert self._row_sums is not None
+        _, rs_index, r, a, b = self._row_sums[i]
+        rs = self.ev.results[rs_index]
+        s = rs.row_start[r]
+        signed = sum(rs.values[s + a : s + b + 1])
+        head, tail = rs.columns[rs.col_of[s + a]], rs.columns[rs.col_of[s + b]]
+        return Candidate(signed, "row_sum", f"{head}..{tail}[{rs.labels[r]}] summed = {fmt(signed)}")
+
+    def _column_sums(self) -> list[tuple[float, str, str]]:
+        out: list[tuple[float, str, str]] = []
+        for rs in self.ev.results:
+            for c, (total, n) in enumerate(zip(rs.col_totals, rs.col_counts, strict=True)):
+                if n >= 2:
+                    out.append(
+                        (abs(total), "column_sum", f"sum of {rs.columns[c]} over {n} rows = {fmt(total)}")
+                    )
+        return out
+
+    def _row_sum_index(self) -> list[tuple[float, int, int, int, int]]:
+        """Adjacent-cell sums (2 to 6 cells) over the first max_rows rows, formatted only on a match."""
+        if self._row_sums is None:
+            out: list[tuple[float, int, int, int, int]] = []
+            for rs in self.ev.results:
+                vals, starts, idx = rs.values, rs.row_start, rs.index
+                for r in range(min(self.policy.max_rows, len(starts) - 1)):
+                    s, e = starts[r], starts[r + 1]
+                    n = e - s
+                    for i in range(n - 1):
+                        total = vals[s + i]
+                        for j in range(i + 1, min(n, i + 6)):
+                            total += vals[s + j]
+                            out.append((abs(total), idx, r, i, j))
+            out.sort(key=lambda t: t[0])
+            self._row_sums = out
+            self._row_sum_keys = [t[0] for t in out]
+        return self._row_sums
+
+    def _differences(self, lo: float, hi: float, score: Scorer) -> Match | None:
+        """Pairs with |a − b| in [lo, hi]. Both windows slide right as b grows, so two pointers suffice."""
+        vals, n = self.pair_vals, len(self.pair_vals)
+        best: tuple[float, int, int] | None = None
+        s1 = e1 = s2 = e2 = 0
+        for j in range(n):
+            b = vals[j]
+            a_lo, a_hi = b + lo, b + hi
+            while s1 < n and vals[s1] < a_lo:
+                s1 += 1
+            while e1 < n and vals[e1] <= a_hi:
+                e1 += 1
+            for i in range(s1, e1):
+                if i != j:
+                    err = score(vals[i] - b)
+                    if err is not None and (best is None or err < best[0]):
+                        best = (err, i, j)
+            a_lo, a_hi = b - hi, b - lo
+            while s2 < n and vals[s2] < a_lo:
+                s2 += 1
+            while e2 < n and vals[e2] <= a_hi:
+                e2 += 1
+            for i in range(s2, e2):
+                if i != j:
+                    err = score(b - vals[i])
+                    if err is not None and (best is None or err < best[0]):
+                        best = (err, i, j)
+        if best is None:
+            return None
+        _, i, j = best
+        ca, cb = self.cell(self.pair_refs[i]), self.cell(self.pair_refs[j])
+        d = ca.value - cb.value
+        return Match(
+            Candidate(
+                d, "difference", f"{ca.ref()} − {cb.ref()} = {fmt(ca.value)} − {fmt(cb.value)} = {fmt(d)}"
+            ),
+            best[0],
+        )
+
+    def _ratios(self, lo: float, hi: float, kind: str, score: Scorer) -> Match | None:
+        """A percent figure is searched as a ÷ b × 100, a plain figure as a ÷ b."""
+        scale = 100.0 if kind == "percent" else 1.0
+        vals, n = self.pair_abs, len(self.pair_abs)
+        best: tuple[float, int, int, str, float] | None = None
+        r_lo, r_hi = lo / scale, hi / scale
+        if r_hi <= 0:
+            return None
+        r_lo = max(r_lo, 1e-300)
+        s1 = e1 = s2 = e2 = 0
+        for j in range(n):
+            b = vals[j]
+            if b == 0:
+                continue
+            a_lo, a_hi = b * r_lo, b * r_hi
+            while s1 < n and vals[s1] < a_lo:
+                s1 += 1
+            while e1 < n and vals[e1] <= a_hi:
+                e1 += 1
+            for i in range(s1, e1):
+                if i != j:
+                    err = score(vals[i] / b * scale)
+                    if err is not None and (best is None or err < best[0]):
+                        best = (err, i, j, kind, scale)
+            a_lo, a_hi = b / r_hi, b / r_lo
+            while s2 < n and vals[s2] < a_lo:
+                s2 += 1
+            while e2 < n and vals[e2] <= a_hi:
+                e2 += 1
+            for i in range(s2, e2):
+                if i != j and vals[i]:
+                    err = score(b / vals[i] * scale)
+                    if err is not None and (best is None or err < best[0]):
+                        best = (err, j, i, kind, scale)
+        if best is None:
+            return None
+        err, num_i, den_i, kind, scale = best
+        ca, cb = self.cell(self.pair_abs_refs[num_i]), self.cell(self.pair_abs_refs[den_i])
+        value = abs(ca.value / cb.value) * scale
+        text = f"{ca.ref()} ÷ {cb.ref()} = {fmt(value)}" + ("%" if scale == 100.0 else "")
+        return Match(Candidate(value, kind, text), err)
+
+    def _percent_changes(self, lo: float, hi: float, score: Scorer) -> Match | None:
+        """(a − b) ÷ b × 100 in ±[lo, hi]. Positive b slides monotonically; negatives fall back to bisect."""
+        vals, n = self.pair_vals, len(self.pair_vals)
+        f_lo, f_hi = lo / 100, hi / 100
+        best: tuple[float, int, int] | None = None
+        s1 = e1 = s2 = e2 = 0
+        for j in range(n):
+            b = vals[j]
+            if b == 0:
+                continue
+            if b > 0:
+                a_lo, a_hi = b * (1 + f_lo), b * (1 + f_hi)
+                while s1 < n and vals[s1] < a_lo:
+                    s1 += 1
+                while e1 < n and vals[e1] <= a_hi:
+                    e1 += 1
+                r1 = range(s1, e1)
+                a_lo, a_hi = b * (1 - f_hi), b * (1 - f_lo)
+                while s2 < n and vals[s2] < a_lo:
+                    s2 += 1
+                while e2 < n and vals[e2] <= a_hi:
+                    e2 += 1
+                r2 = range(s2, e2)
+            else:
+                w1 = sorted((b * (1 + f_lo), b * (1 + f_hi)))
+                w2 = sorted((b * (1 - f_hi), b * (1 - f_lo)))
+                r1 = range(bisect_left(vals, w1[0]), bisect_right(vals, w1[1]))
+                r2 = range(bisect_left(vals, w2[0]), bisect_right(vals, w2[1]))
+            for rng in (r1, r2):
+                for i in rng:
+                    if i != j:
+                        err = score(abs((vals[i] - b) / b * 100))
+                        if err is not None and (best is None or err < best[0]):
+                            best = (err, i, j)
+        if best is None:
+            return None
+        _, i, j = best
+        ca, cb = self.cell(self.pair_refs[i]), self.cell(self.pair_refs[j])
+        pc = (ca.value - cb.value) / cb.value * 100
+        return Match(
+            Candidate(pc, "percent_change", f"({ca.ref()} − {cb.ref()}) ÷ {cb.ref()} = {fmt(pc)}%"),
+            best[0],
+        )

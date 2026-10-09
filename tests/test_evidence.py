@@ -45,6 +45,7 @@ def test_dataframe_duck_typing() -> None:
 def test_cursor_duck_typing_with_decimals() -> None:
     ev = build_evidence(FakeCursor())
     assert ev.results[0].columns == ["STATE", "POP"] and ev.cells[1].value == 28635442.0
+    assert ev.results[0].rows[1][0].label == "TX"
 
 
 def test_scalars_and_multiple_result_sets() -> None:

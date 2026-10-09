@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from figured.derive import Index, build_candidates
+from figured.derive import Index
 from figured.evidence import build_evidence
 from figured.extract import Figure, extract_numbers
 from figured.policy import Policy
@@ -32,8 +32,8 @@ def trace(
     figures = extract_numbers(text)
     if ev.empty:
         return Report(text, [_without_evidence(f, pol) for f in figures], 0)
-    index = Index(build_candidates(ev, pol))
-    return Report(text, [_check(f, index, pol) for f in figures], len(ev.cells))
+    index = Index(ev, pol)
+    return Report(text, [_check(f, index, pol) for f in figures], ev.size)
 
 
 def _without_evidence(fig: Figure, pol: Policy) -> Result:
@@ -51,9 +51,9 @@ def _check(fig: Figure, index: Index, pol: Policy) -> Result:
         return Result(fig, "ignored", reason="year")
     if not fig.is_percent and abs(fig.value) <= pol.ignore_below:
         return Result(fig, "ignored", reason="small")
-    match = index.lookup(fig.value, pol)
+    match = index.lookup(fig.value, pol, is_percent=fig.is_percent)
     if match is None and fig.is_range:
-        match = index.lookup_range(*fig.bounds, pol)
+        match = index.lookup_range(*fig.bounds, pol, is_percent=fig.is_percent)
     if match is not None:
         return Result(fig, "grounded", match)
     if fig.is_percent and pol.unmatched_percent == "pass":

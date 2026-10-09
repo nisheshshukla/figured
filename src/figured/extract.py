@@ -41,6 +41,7 @@ _NUMBER = re.compile(
     """,
     re.VERBOSE | re.IGNORECASE,
 )
+_START = re.compile(r"(?:[-−]\s?)?[$€£¥]?\d")
 _RANGE_JOIN = re.compile(r"^\s*(?:to|and|or|-|–|—)\s*$", re.IGNORECASE)
 
 
@@ -81,7 +82,16 @@ def extract_numbers(text: str) -> list[Figure]:
     "40 to 50 million", where the scale of the second number is applied to the first.
     """
     out: list[Figure] = []
-    for m in _NUMBER.finditer(text):
+    pos = 0
+    match = _NUMBER.match
+    for start in _START.finditer(text):
+        at = start.start()
+        if at < pos:
+            continue
+        m = match(text, at) or (match(text, start.end() - 1) if start.end() - 1 > at else None)
+        if m is None:
+            continue
+        pos = m.end()
         body = m.group("body").replace(",", "")
         value = float(body)
         word = (m.group("word") or "").lower()

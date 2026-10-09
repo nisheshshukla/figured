@@ -21,7 +21,7 @@ UNGROUNDED · 3 checked · 1 untraceable
   ✗ 4.1 million      no cell, sum, difference, or ratio within tolerance
 ```
 
-Zero dependencies. Deterministic. Under a millisecond for typical result sets. Python 3.10+.
+Zero dependencies. Deterministic. About 150 µs for a typical answer, 1 ms for 200 rows. Python 3.10+.
 
 ```bash
 pip install figured
@@ -48,6 +48,8 @@ Every substantive number in the text must be within a tolerance (default 1.5 per
 | percent change | "grew 2.3%" | `(y2020 − y2019) ÷ y2019 = 2.3%` |
 
 Differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between 39 and 40 million" is grounded when a candidate lies inside it. Numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 counties in 2020" is not a claim about the data.
+
+Two rules keep the search honest. A figure written as a percentage is searched as `a ÷ b × 100`, and a plain figure as `a ÷ b`, never both, so "150" cannot pass by coincidentally matching a 150% share. And the pairwise and adjacent-cell derivations cover the first `max_rows` rows (12 by default), which is the part of a result a model has usually read; cells and column sums cover every row. Raise `max_rows` if your prompt includes more.
 
 Each grounded figure carries the derivation that matched, so a reviewer can check it by hand. Each ungrounded figure is named. Nothing blocks: you decide whether to append the caveat, change a badge, or fail a test.
 
@@ -87,9 +89,22 @@ trace(answer, rows, ignore_below=0, ignore_years=False)
 | `ignore_below` | 100 | figures at or below this are counts of things, not claims |
 | `ignore_years` | True | bare four-digit integers in `year_range` are skipped |
 | `unmatched_percent` | "pass" | shares of totals outside the rows are common, so a lone percentage passes |
-| `max_rows`, `max_cells` | 12, 40 | how much of the result feeds the pairwise search |
+| `max_rows`, `max_cells` | 12, 40 | how much of the result feeds the pairwise and adjacent-sum search |
 | `derivations` | all seven | which candidate kinds are generated |
 | `parse_strings` | True | coerce numeric strings in the rows |
+
+## Speed
+
+Measured with `python benchmarks/bench.py` on a laptop, one answer with nine figures:
+
+| Result set | Time per check |
+|---|---|
+| 2 rows × 3 columns | 150 µs |
+| 12 rows × 5 columns | 360 µs |
+| 200 rows × 10 columns | 1.1 ms |
+| 2,000 rows × 10 columns | 9 ms |
+
+Nothing is enumerated up front. Cells and column sums are indexed once; differences, ratios, percentages, and percent changes are found per figure by solving for the partner cell and bisecting for it. Explanations are formatted only for the figure that matched. For comparison, a model-based faithfulness judge takes seconds and costs a request.
 
 ## Command line
 

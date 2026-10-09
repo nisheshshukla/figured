@@ -1,18 +1,24 @@
-"""Normalize whatever the caller has (rows, dicts, a DataFrame, a cursor) into numeric cells."""
+"""Normalize whatever the caller has (rows, dicts, a DataFrame, a cursor) into numeric cells.
+
+Storage is columnar and flat: one list of values across all result sets, with offsets. Cell
+objects are created only for the handful of cells that end up in an explanation.
+"""
 
 from __future__ import annotations
 
 import math
 import re
+from bisect import bisect_right
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
 _NUMERIC_STRING = re.compile(r"^[-+]?[$€£¥]?\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][-+]?\d+)?%?$")
+_MONEY = str.maketrans("", "", ",$€£¥")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Cell:
     value: float
     column: str
@@ -24,24 +30,47 @@ class Cell:
         return f"{self.column}[{self.label}]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ResultSet:
     columns: list[str]
-    rows: list[list[Cell]]
     index: int
+    values: list[float] = field(default_factory=list)
+    col_of: list[int] = field(default_factory=list)
+    row_start: list[int] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
+    col_totals: list[float] = field(default_factory=list)
+    col_counts: list[int] = field(default_factory=list)
+
+    @property
+    def rows(self) -> list[list[Cell]]:
+        return [
+            [self.cell(k) for k in range(self.row_start[r], self.row_start[r + 1])]
+            for r in range(len(self.labels))
+        ]
+
+    def row_of(self, k: int) -> int:
+        return bisect_right(self.row_start, k) - 1
+
+    def cell(self, k: int) -> Cell:
+        r = self.row_of(k)
+        return Cell(self.values[k], self.columns[self.col_of[k]], r, self.index, self.labels[r])
 
 
-@dataclass
+@dataclass(slots=True)
 class Evidence:
     results: list[ResultSet] = field(default_factory=list)
 
     @property
     def cells(self) -> list[Cell]:
-        return [c for rs in self.results for row in rs.rows for c in row]
+        return [rs.cell(k) for rs in self.results for k in range(len(rs.values))]
+
+    @property
+    def size(self) -> int:
+        return sum(len(rs.values) for rs in self.results)
 
     @property
     def empty(self) -> bool:
-        return not self.cells
+        return self.size == 0
 
 
 def build_evidence(
@@ -68,27 +97,29 @@ def _to_table(obj: Any) -> tuple[list[str], list[Sequence[Any]]]:
         return [], []
     if isinstance(obj, Mapping) and "rows" in obj:
         cols = [str(c) for c in obj.get("columns") or []]
-        return cols, [list(r) if not isinstance(r, Mapping) else _dict_row(r, cols) for r in obj["rows"]]
+        return cols, [_dict_row(r, cols) if isinstance(r, Mapping) else r for r in obj["rows"]]
     if hasattr(obj, "to_dict") and hasattr(obj, "columns"):
-        records = obj.to_dict("records")
         cols = [str(c) for c in obj.columns]
-        return cols, [[rec.get(c) for c in cols] for rec in records]
+        return cols, [[rec.get(c) for c in cols] for rec in obj.to_dict("records")]
     if hasattr(obj, "fetchall") and hasattr(obj, "description"):
-        cols = [str(d[0]) for d in obj.description or []]
-        return cols, [list(r) for r in obj.fetchall()]
-    rows = list(obj)
+        return [str(d[0]) for d in obj.description or []], list(obj.fetchall())
+    rows = obj if isinstance(obj, list) else list(obj)
     if not rows:
         return [], []
-    if isinstance(rows[0], Mapping):
-        keys: list[str] = []
+    first = rows[0]
+    if isinstance(first, Mapping):
+        keys: list[Any] = list(first.keys())
+        seen = set(keys)
         for r in rows:
-            for k in r:
-                if str(k) not in keys:
-                    keys.append(str(k))
-        return keys, [[r.get(c) for c in keys] for r in rows]
-    if isinstance(rows[0], str | bytes | int | float | Decimal):
+            if len(r) != len(keys) or r.keys() != seen:
+                for k in r:
+                    if k not in seen:
+                        seen.add(k)
+                        keys.append(k)
+        return [str(k) for k in keys], [[r.get(c) for c in keys] for r in rows]
+    if isinstance(first, str | bytes | int | float | Decimal):
         return [], [[r] for r in rows]
-    return [], [list(r) for r in rows]
+    return [], rows
 
 
 def _dict_row(r: Mapping[str, Any], cols: list[str]) -> list[Any]:
@@ -101,23 +132,54 @@ def _result_set(
     width = max((len(r) for r in raw_rows), default=0)
     if len(columns) < width:
         columns = columns + [f"c{i}" for i in range(len(columns), width)]
-    rows: list[list[Cell]] = []
-    for ri, raw in enumerate(raw_rows):
-        label = _row_label(raw, ri)
-        cells = []
+    rs = ResultSet(columns, index)
+    values, col_of, row_start, labels = rs.values, rs.col_of, rs.row_start, rs.labels
+    totals, counts = [0.0] * width, [0] * width
+    push_v, push_c, push_label, push_start = values.append, col_of.append, labels.append, row_start.append
+    isfinite = math.isfinite
+    for raw in raw_rows:
+        push_start(len(values))
+        label = ""
         for ci, v in enumerate(raw):
-            num = to_number(v, parse_strings)
-            if num is not None:
-                cells.append(Cell(num, columns[ci], ri, index, label))
-        rows.append(cells)
-    return ResultSet(columns, rows, index)
+            t = type(v)
+            if t is float:
+                if not isfinite(v):
+                    continue
+            elif t is int:
+                v = float(v)
+            elif t is str:
+                s = v.strip()
+                if _NUMERIC_STRING.match(s):
+                    if not parse_strings:
+                        continue
+                    num = _parse_numeric_string(s)
+                    if num is None:
+                        continue
+                    v = num
+                else:
+                    if not label and s:
+                        label = s[:40]
+                    continue
+            else:
+                num = to_number(v, parse_strings)
+                if num is None:
+                    continue
+                v = num
+            push_v(v)
+            push_c(ci)
+            totals[ci] += v
+            counts[ci] += 1
+        push_label(label or f"row {len(labels)}")
+    push_start(len(values))
+    rs.col_totals, rs.col_counts = totals, counts
+    return rs
 
 
-def _row_label(raw: Sequence[Any], ri: int) -> str:
-    for v in raw:
-        if isinstance(v, str) and v.strip() and not _NUMERIC_STRING.match(v.strip()):
-            return v.strip()[:40]
-    return f"row {ri}"
+def _parse_numeric_string(s: str) -> float | None:
+    try:
+        return float(s.rstrip("%").translate(_MONEY))
+    except ValueError:
+        return None
 
 
 def to_number(v: Any, parse_strings: bool = True) -> float | None:
@@ -130,20 +192,7 @@ def to_number(v: Any, parse_strings: bool = True) -> float | None:
         return float(v) if v.is_finite() else None
     if isinstance(v, str):
         s = v.strip()
-        if parse_strings and _NUMERIC_STRING.match(s):
-            s = (
-                s.rstrip("%")
-                .replace(",", "")
-                .replace("$", "")
-                .replace("€", "")
-                .replace("£", "")
-                .replace("¥", "")
-            )
-            try:
-                return float(s)
-            except ValueError:
-                return None
-        return None
+        return _parse_numeric_string(s) if parse_strings and _NUMERIC_STRING.match(s) else None
     if hasattr(v, "__float__"):
         try:
             f = float(v)
