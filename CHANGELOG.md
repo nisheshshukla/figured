@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Documentation only: the derivation table, CLI example, and judge example use the sales dataset.
+
 ## 0.1.1
 
 - Currency figures are always checked, regardless of size. A "$71" average order value is a claim about the data, not a count of things, and the small-number rule no longer skips it.

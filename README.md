@@ -50,15 +50,15 @@ Every substantive number in the text must be within a tolerance (default 1.5 per
 
 | Derivation | Example | Explanation you get back |
 |---|---|---|
-| cell | "39,346,023 people" | `pop[California] = 39,346,023` |
-| column sum | "together, 1,000,000 residents" | `sum of pop over 3 rows = 1,000,000` |
-| adjacent-cell sum | "the three youngest bands total 1,200" | `a..c[row 0] summed = 1,200` |
-| difference | "10.7 million more than Texas" | `pop[California] − pop[Texas] = ... = 10,710,581` |
-| ratio | "3.0 to one" | `a[row 0] ÷ b[row 0] = 3` |
-| percent | "72.8% of California" | `pop[Texas] ÷ pop[California] = 72.8%` |
-| percent change | "grew 2.3%" | `(y2020 − y2019) ÷ y2019 = 2.3%` |
+| cell | "$4,820,000 in revenue" | `revenue[North America] = 4,820,000` |
+| column sum | "combined, $9.9M" | `sum of revenue over 3 rows = 9,900,000` |
+| adjacent-cell sum | "the first three quarters total 1,200" | `q1..q3[Widgets] summed = 1,200` |
+| difference | "$1.67M more than Europe" | `revenue[North America] − revenue[Europe] = 4,820,000 − 3,150,000 = 1,670,000` |
+| ratio | "1.28 times Europe's orders" | `orders[North America] ÷ orders[Europe] = 1.28` |
+| percent | "Europe is 65% of North America" | `revenue[Europe] ÷ revenue[North America] = 65.35%` |
+| percent change | "grew 53%" | `(revenue[North America] − revenue[Europe]) ÷ revenue[Europe] = 53.02%` |
 
-Differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between 39 and 40 million" is grounded when a candidate lies inside it. Plain numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 regions in 2024" is not a claim about the data; a figure with a currency symbol or a percent sign is always checked.
+Differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between $9 and $10 million" is grounded when a candidate lies inside it. Plain numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 regions in 2024" is not a claim about the data; a figure with a currency symbol or a percent sign is always checked.
 
 Two rules keep the search honest. A figure written as a percentage is searched as `a ÷ b × 100`, and a plain figure as `a ÷ b`, never both, so "150" cannot pass by coincidentally matching a 150% share. And the pairwise and adjacent-cell derivations cover the first `max_rows` rows (12 by default), which is the part of a result a model has usually read; cells and column sums cover every row. Raise `max_rows` if your prompt includes more.
 
@@ -76,7 +76,7 @@ Each grounded figure carries the derivation that matched, so a reviewer can chec
 - several result sets at once: `trace(text, results=[rows_a, rows_b])`
 - an API or tool response, since a list of JSON objects is a list of dicts
 
-Numeric strings in the rows are parsed by default, so `"39,346,023"`, `"$1,200"`, and `"12%"` all count. Decimals from database drivers are handled. Booleans are not numbers.
+Numeric strings in the rows are parsed by default, so `"4,820,000"`, `"$1,200"`, and `"12%"` all count. Decimals from database drivers are handled. Booleans are not numbers.
 
 ## Text it understands
 
@@ -121,7 +121,7 @@ Nothing is enumerated up front. Cells and column sums are indexed once; differen
 ## Command line
 
 ```bash
-figured "California has 39.3 million people." --rows rows.json
+figured "Revenue reached $4.82M in North America." --rows rows.json
 figured - --rows rows.json < answer.txt
 figured "..." --rows rows.json --json --tolerance 0.01 --strict-percent
 ```
@@ -143,7 +143,7 @@ if not report.ok:
 
 **In DeepEval or any custom metric**, wrap `trace` and return `1 - len(report.ungrounded) / report.checked`.
 
-**With a model judge for the rest.** Arithmetic cannot see a wrong word around a right number: "Nevada is richer than Utah" with the two correct medians reversed passes. The optional `judge` extra sends the question, the rows, and the answer to a model and returns a strict verdict on faithfulness, responsiveness, and caveats:
+**With a model judge for the rest.** Arithmetic cannot see a wrong word around a right number: "Europe outperformed North America" with the two correct revenue figures reversed passes. The optional `judge` extra sends the question, the rows, and the answer to a model and returns a strict verdict on faithfulness, responsiveness, and caveats:
 
 ```bash
 pip install "figured[judge]"
@@ -152,7 +152,7 @@ pip install "figured[judge]"
 ```python
 from figured.judge import judge
 
-judge("Which state is richer?", answer, rows)  # {"verdict": "fail", "issues": ["comparison reversed"], ...}
+judge("Which region performed best?", answer, rows)   # {"verdict": "fail", "issues": ["comparison reversed"], ...}
 ```
 
 ## What it does not do

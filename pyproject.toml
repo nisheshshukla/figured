@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "figured"
-version = "0.1.1"
+version = "0.1.2"
 description = "Show your work: verify that every number in an LLM-generated answer traces to the rows it was derived from."
 readme = "README.md"
 license = "MIT"
