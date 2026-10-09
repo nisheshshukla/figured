@@ -107,7 +107,7 @@ Treat claim flags as "unverified figure" rather than "fabricated figure", or tur
 
 ## Speed
 
-All 1,980 runs (56,592 messages, 14,285 tool calls) replay in about 12 seconds on a laptop: 6 ms per run, about 0.2 ms per message, with no model calls.
+All 1,980 runs (56,592 messages, 14,285 tool calls) replay in about 12 seconds on a laptop, with no model calls. The latency-critical check, `before_call`, has a p50 of 19 µs and a p99 of 0.13 ms across those 14,285 calls; `benchmarks/agent_speed.py` reproduces this and adds long sessions and multi-megabyte tool results.
 
 ## Limits worth knowing
 

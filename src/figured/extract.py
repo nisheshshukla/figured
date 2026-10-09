@@ -84,13 +84,12 @@ def extract_numbers(text: str) -> list[Figure]:
     """
     out: list[Figure] = []
     pos = 0
-    match = _NUMBER.match
-    for start in _START.finditer(text):
+    match, search = _NUMBER.match, _START.search
+    while (start := search(text, pos)) is not None:
         at = start.start()
-        if at < pos:
-            continue
         m = match(text, at) or (match(text, start.end() - 1) if start.end() - 1 > at else None)
         if m is None:
+            pos = start.end()
             continue
         pos = m.end()
         body = m.group("body").replace(",", "")
@@ -114,6 +113,42 @@ def extract_numbers(text: str) -> list[Figure]:
             )
         )
     return _apply_ranges(text, out)
+
+
+def scan_values(text: str) -> list[float]:
+    """The values `extract_numbers` would return, without building Figure objects. For hot paths."""
+    vals: list[float] = []
+    spans: list[tuple[int, int, float | None, bool]] = []
+    pos = 0
+    match, search, scales, pct_words = _NUMBER.match, _START.search, SCALES, PERCENT_WORDS
+    while (start := search(text, pos)) is not None:
+        at = start.start()
+        m = match(text, at) or (match(text, start.end() - 1) if start.end() - 1 > at else None)
+        if m is None:
+            pos = start.end()
+            continue
+        pos = m.end()
+        sign, body, pct, word = m.group("sign", "body", "pct", "word")
+        v = float(body.replace(",", "") if "," in body else body)
+        scale: float | None = None
+        if word:
+            w = word.lower()
+            is_pct = w in pct_words
+            scale = scales.get(w)
+            if scale:
+                v *= scale
+        else:
+            is_pct = pct is not None
+        if sign:
+            v = -v
+        vals.append(v)
+        spans.append((m.start(), pos, scale, is_pct))
+    for i in range(len(spans) - 1):
+        _, a_end, a_scale, a_pct = spans[i]
+        b_start, _, b_scale, _ = spans[i + 1]
+        if b_scale and not a_scale and not a_pct and _RANGE_JOIN.match(text[a_end:b_start]):
+            vals[i] *= b_scale
+    return vals
 
 
 def _apply_ranges(text: str, figures: list[Figure]) -> list[Figure]:

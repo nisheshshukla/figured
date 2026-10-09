@@ -7,7 +7,7 @@
 | Check | Runs on | Catches | Typical cost |
 |---|---|---|---|
 | `trace(answer, rows)` | a generated answer and the rows it was written from | figures that are not in the data and cannot be derived from it | about 150 µs |
-| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts with no source in the conversation or earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 0.2 ms per message |
+| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts with no source in the conversation or earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 20 µs per tool call (p99 0.13 ms) |
 
 Zero dependencies. No model calls. Python 3.10+.
 
@@ -153,6 +153,20 @@ policy = AgentPolicy.build(
 | `date_shift_days` | 7 | how far a date the user asked to move may shift |
 | `check_text` | True | also trace values the agent states in its messages |
 
+### Latency
+
+The check that matters for latency is `before_call`, which sits between the model proposing a tool call and the call running. Everything expensive happens earlier, when a tool result is added, because that moment is followed by a model call that takes seconds anyway. Numbers are indexed in log-scale buckets, so a tolerance lookup touches a few dozen entries however much the agent has seen; dates are indexed by month and day; identifier search is a C-level substring scan. Measured with `python benchmarks/agent_speed.py` on a laptop:
+
+| Session | `before_call` p50 | p99 | Adding a tool result |
+|---|---|---|---|
+| tau-bench runs (14,285 calls) | 19 µs | 0.13 ms | |
+| 32 KB tool result | 0.03 ms | 0.05 ms | 6 ms |
+| 200 tool results, 400 KB seen | 0.19 ms | 0.41 ms | |
+| 350 KB tool result | 0.11 ms | 0.20 ms | 66 ms |
+| 3.5 MB tool result | 0.95 ms | 1.8 ms | 197 ms (indexing capped at 1 MB per source) |
+
+Call latency grows with the total text the agent has seen at about 0.3 ms per megabyte, from the identifier scan. For comparison, gateway hops in published benchmarks add under 10 ms, classifier guardrails 20 to 100 ms, and model-based checks around a second.
+
 ### Finished transcripts
 
 `check_run(messages)` replays a recorded run through the same monitor, for offline evals, CI, and trace review. It reads OpenAI chat messages and Anthropic content blocks, including mixtures.
@@ -175,7 +189,7 @@ report.ok, report.unsourced, report.findings, report.to_dict()
 | Corrupted identifiers caught (one transposed or changed digit) | 2,994 of 2,998 |
 | Corrupted emails and address lines caught | 225 of 225 |
 | Corrupted dates caught | 80 of 107; nearly all misses are dates that appear elsewhere in the run |
-| Time | 6 ms per run, about 0.2 ms per message |
+| Time per tool call | p50 19 µs, p99 0.13 ms; no model calls |
 
 What the flags on *successful* runs found is the interesting part: zip codes the agent assumed from a city name, user IDs guessed from a person's name, a payment ID built from "the card ending in 7334", and a placeholder `gift_card_0000000`. Each reached a real tool. The runs succeeded only because the bad call errored and the agent recovered.
 

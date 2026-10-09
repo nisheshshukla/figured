@@ -57,6 +57,8 @@ _RELATIVE = re.compile(
 )
 
 DateKey = tuple[int | None, int, int]
+_MONTH3 = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_RELATIVE_HINTS = ("today", "tonight", "tomorrow", "yesterday", "day")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,15 +124,19 @@ def looks_like_identifier(token: str) -> bool:
 def parse_dates(text: str, as_of: dt.date | None = None) -> set[DateKey]:
     """Every calendar date mentioned in `text`, with relative words resolved against `as_of`."""
     out: set[DateKey] = set()
-    for m in _ISO.finditer(text):
+    low = text.lower()
+    has_digit_dash = "-" in text
+    has_slash = "/" in text
+    has_month = any(mon in low for mon in _MONTH3)
+    for m in _ISO.finditer(text) if has_digit_dash else ():
         _add(out, int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    for m in _SLASH.finditer(text):
+    for m in _SLASH.finditer(text) if has_slash else ():
         a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         year = y + 2000 if y < 100 else y
         _add(out, year, a, b)
         if a != b:
             _add(out, year, b, a)
-    for m in _MONTH_DAY.finditer(text):
+    for m in _MONTH_DAY.finditer(text) if has_month else ():
         month = MONTHS[m.group(1).lower()[:3]]
         named_year = int(m.group(3)) if m.group(3) else None
         _add(out, named_year, month, int(m.group(2)))
@@ -138,9 +144,9 @@ def parse_dates(text: str, as_of: dt.date | None = None) -> set[DateKey]:
         while more := _DAY_LIST.match(text, pos):
             _add(out, named_year, month, int(more.group(1)))
             pos = more.end()
-    for m in _DAY_MONTH.finditer(text):
+    for m in _DAY_MONTH.finditer(text) if has_month else ():
         _add(out, int(m.group(3)) if m.group(3) else None, MONTHS[m.group(2).lower()[:3]], int(m.group(1)))
-    if as_of is not None:
+    if as_of is not None and any(w in low for w in _RELATIVE_HINTS):
         for m in _RELATIVE.finditer(text):
             word = m.group(1).lower()
             if word in ("today", "tonight"):

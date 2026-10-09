@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Agent checks are faster on long sessions and large tool results, with identical results on all 1,980 benchmark runs (verified by a fingerprint of every report). `before_call` p99 for 400 KB of session text went from 78 ms to 0.41 ms, and the first call after a 3.5 MB tool result from 1.5 s to under 2 ms. Numbers are indexed in log-scale buckets and dates by month and day, all at ingest; JSON string values are scanned in one pass; per-source indexing is capped at 1 MB.
+- A malformed or deeply nested JSON tool result no longer raises `RecursionError` during number indexing.
+- `figured.extract.scan_values`: the values `extract_numbers` returns, without building `Figure` objects.
+
 ## 0.2.0
 
 Agent runs.
