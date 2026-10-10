@@ -164,11 +164,14 @@ def load_tau2(name: str, tools: list[dict[str, Any]]) -> list[ae.Run]:
 # measuring
 
 
-def evaluate(runs: list[ae.Run], label: str, writes: set[str] | None, ground_truth: bool) -> dict[str, Any]:
+def evaluate(
+    runs: list[ae.Run], label: str, writes: set[str] | None, ground_truth: bool, selection: bool | None = None
+) -> dict[str, Any]:
     rng = random.Random(7)
     t: dict[str, Any] = collections.defaultdict(int)
     flags_ok: list[str] = []
-    selection = writes is not None or not ground_truth
+    if selection is None:
+        selection = writes is not None or not ground_truth
     t0 = time.perf_counter()
     for run in runs:
         key = "ok" if run.ok else "fail"
@@ -281,7 +284,13 @@ def evaluate(runs: list[ae.Run], label: str, writes: set[str] | None, ground_tru
     review = sorted(set(flags_ok))
     if len(review) > REVIEW:
         review = random.Random(7).sample(review, REVIEW)
-    res = {"label": label, **t, "flags_on_successful_runs": len(flags_ok), "review": review}
+    res = {
+        "label": label,
+        **t,
+        "flags_on_successful_runs": len(flags_ok),
+        "review": review,
+        "all_flags": flags_ok,
+    }
     show(res, ground_truth)
     return res
 
