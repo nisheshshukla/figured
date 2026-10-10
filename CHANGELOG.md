@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1
+
+Fixes for what the clean evaluation of 0.4.0 found (`docs/clean-eval-results.md`).
+
+- ISO timestamps with seconds and a zone (`2025-08-02T23:59:59Z`) are dates, not identifiers.
+- Dates written `YY-MM-DD` in tool results (`26-01-01`) are read.
+- Periods the user names give range bounds: "August" → 08-01, 08-31, and 09-01; "in 2024"; "this month" and "last month" against the reference date. "The 8th of this month" is a date.
+- A string of digits that is not found as an identifier may match an amount written with separators ("50000" for "50,000").
+- Read calls (`read_tools`, or the MCP annotation `readOnlyHint`) do not have their range bounds and paging checked (`search_bounds="skip"`): start and end dates, min and max, limit. Identifiers in read calls are still checked.
+- AgentDojo's newer transcript format (content blocks keyed `content`) is read.
+- `ambiguous_before`, `confirm_before`, and `requires` are documented as experimental.
+- On the clean evaluation's data, now development data: ToolScale successful runs flagged 12.8% → 1.3%; tau-bench and tau2 unchanged or lower; AgentDojo Llama 3.3 runs readable.
+
 ## 0.4.0
 
 Tool schemas, a confirm verdict, and checks on the call. Built from research into 0.3.0's measured gaps: fix the false flags that have a deterministic fix, and for questions provenance cannot answer, ask instead of guessing. See `docs/agent-eval-results.md`.

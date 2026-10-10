@@ -120,7 +120,7 @@ Arguments are checked strictly, because they are acted on. Values in the agent's
 |---|---|---|
 | identifier | the same characters appear, ignoring case and separators (`ORD 88213` → `ORD-88213`, `(415) 555-0132` → `+14155550132`, IBANs with or without spaces); a prefix the tool's schema states is added to digits found in context (`9502127` → `#W9502127` when the description says "such as '#W0000000'", or a `pattern` says `^#W\d{7}$`) | a digit run inside another identifier; a prefix added to digits nobody typed, or to the wrong number of them (`credit_card_7334` from "ending in 7334") |
 | email, URL | the address appears, ignoring case; a URL may differ in scheme or `www.` | another host that ends the same way (`evil-example.com` is not `example.com`) |
-| date | the calendar date appears in any format, including Spanish, French, German, Portuguese, Italian, and Chinese or Japanese dates; "tomorrow", weekdays, and "end of the month" resolve against the system prompt's date; a date without a year takes the year nearest that date; a shift the user asked for, in the direction they asked ("a day later", "two weeks earlier") | a shift in the other direction; a shift applied to a birth date or any date years from now |
+| date | the calendar date appears in any format, including ISO timestamps (`2025-08-02T23:59:59Z`), `YY-MM-DD` in tool results, Spanish, French, German, Portuguese, Italian, and Chinese or Japanese dates; "tomorrow", weekdays, and "end of the month" resolve against the system prompt's date; a date without a year takes the year nearest that date; the first or last day of a period the user names, or the day after ("August" → 08-01, 08-31, 09-01; "in 2024"; "last month"), as search tools take them; a shift the user asked for, in the direction they asked ("a day later", "two weeks earlier") | a shift in the other direction; a shift applied to a birth date or any date years from now |
 | amount | the number appears, to the cent and with its sign; or it is a sourced amount times a count the user stated or a list's length (passengers, items), a stated percentage of an amount (a tip, a tax), or two money fields of one small source added (two item prices, a price and its tax); English number words count ("two hundred fifty") | a multiple by a count nobody stated; a sum over a search result with dozens of fares, where some pair matches almost anything |
 | phrase | a short string with digits (an address line) appears, or every number and word in it does, with each number beside words in its source | a house number borrowed from a price |
 
@@ -156,13 +156,13 @@ monitor.user("It's the one with the smart watch.")
 monitor.before_call("return_items", {"order_id": "#W2222222"}).action  # "allow"
 ```
 
-The opt-in checks behind it:
+The opt-in checks behind it. The first two are experimental: they route calls to a person or a verifier, and how well depends on the domain.
 
 - `ambiguous_before`: an identifier the agent chose from several of the same shape (orders, items, payment methods) that the user neither typed nor singled out. Singling out counts by value or by an attribute of the value's record that the other candidates do not all share: "the smart watch", "the Mastercard ending in 2478".
 - `confirm_before`: the user's last message must agree ("yes", "go ahead") to what the agent said since the last confirmed action, and every value in the call must appear in it, by value or by attribute. Many support policies, tau-bench's among them, require this before any change.
 - `named_sources="confirm"`: a value a source rule forbids, which came from a file, URL, or address the user named ("pay the bill in 'bill.txt'"), asks instead of blocking.
 
-Two checks on the call itself complement them: with `tools=` passed, a call to a tool the agent does not have is blocked; and `requires` names calls that must come first (`{"send_payment_request": ["get_bills_for_customer"]}`).
+Two checks on the call itself complement them: with `tools=` passed, a call to a tool the agent does not have is blocked; and, experimental, `requires` names calls that must come first (`{"send_payment_request": ["get_bills_for_customer"]}`).
 
 These route; they do not judge. Measured on the same benchmarks:
 
@@ -201,6 +201,8 @@ policy = AgentPolicy.build(
 | `named_sources` | "rule" | "confirm" asks instead of blocking when a rule-violating value came from a resource the user named |
 | `ambiguous_before`, `confirm_before` | none | tool patterns for the selection and confirmation checks |
 | `requires` | none | tool pattern to calls that must come first |
+| `read_tools` | `get_*`, `search_*`, `list_*`... | tools that only read; the MCP annotation `readOnlyHint` marks one too |
+| `search_bounds` | "skip" | on read calls, do not check range bounds and paging (`start_date`, `min_amount`, `limit`), which agents choose themselves; identifiers in read calls are still checked |
 | `on_selection`, `on_requires`, `on_unknown_tool` | confirm, warn, block | severity for those checks |
 | `on_unsourced`, `on_rule`, `on_repeat`, `on_budget` | warn, block, warn, block | severity for each finding type: "warn", "confirm", or "block" |
 | `kinds` | all six | which value kinds need a source |
@@ -243,7 +245,7 @@ report.ok, report.unsourced, report.findings, report.to_dict()
 - tau2-bench airline and retail: 1.1% of successful runs flagged, against 14.9% for the baseline, and 98% of corrupted values caught.
 - AgentDojo, four new models: 86% of successful injections flagged with source rules.
 
-**On new domains they did not.** In ToolScale's banking and medicine runs, 12.8% of successful runs were flagged, about as often as the substring baseline, mostly for date ranges ("August" → the 1st to the 31st) and date formats figured does not derive or read, and for search parameters agents choose themselves. Read the numbers below as what figured does in domains like the ones it was tuned on.
+**On new domains they did not.** In ToolScale's banking and medicine runs, 12.8% of successful runs were flagged, about as often as the substring baseline, mostly for date ranges ("August" → the 1st to the 31st) and date formats figured does not derive or read, and for search parameters agents choose themselves. 0.4.1 fixes those causes: on the same data, now development data, ToolScale's flagged successful runs fall from 12.8% to 1.3%, with corruptions caught unchanged. Whether that holds on new domains needs another clean measurement, which is next. Until then, read the numbers below as what figured does in domains like the ones it was tuned on.
 
 
 Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics, and is replayed with its tools' schemas, as an agent would be given them. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).

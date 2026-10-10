@@ -113,3 +113,16 @@ The protocol said to classify each flag as genuine or false. Reading them showed
 - **Agent-chosen parameters on read calls** (page sizes, widened search windows) are flagged. Whether they should be is a policy question: they are not provenance errors.
 
 Fixing these and measuring again on these sets would no longer be a clean measurement; the next clean number needs data figured has not seen.
+
+## After the fixes (0.4.1), on the same data
+
+This is development data now, so these numbers say the fixes work, not that they generalize. A new clean measurement on unseen data follows.
+
+| Set | 0.4.0, clean | 0.4.1, same data |
+|---|---|---|
+| ToolScale DeepSeek V4 Pro, successful runs flagged | 4.5% | 1.8% |
+| ToolScale Qwen 3.6 Plus, successful runs flagged | 16.1% | 1.1% |
+| ToolScale corruptions caught | 1,078 of 1,084 | 1,080 of 1,084 |
+| tau2 airline, successful runs flagged | 2.3% | 1.9% |
+| tau2 retail, successful runs flagged | 0.7% | 0.6% |
+| AgentDojo Llama 3.3 70B | unreadable | 84.5% of successful injections and 26.9% of benign runs flagged with rules |

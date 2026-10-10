@@ -256,6 +256,8 @@ def _text(content: Any) -> str:
             elif isinstance(b, dict):
                 if "text" in b:
                     parts.append(str(b["text"]))
+                elif b.get("type") == "text" and isinstance(b.get("content"), str):
+                    parts.append(b["content"])
                 elif "json" in b:
                     parts.append(json.dumps(b["json"], default=str))
                 elif b.get("type") == "tool_result":

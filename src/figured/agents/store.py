@@ -29,7 +29,7 @@ from figured.evidence import build_evidence
 from figured.extract import scan_values
 from figured.policy import DERIVATIONS, Policy
 
-from .values import DateKey, number_words, parse_dates
+from .values import DateKey, date_periods, number_words, parse_dates
 
 _WS = re.compile(r"\s+")
 _NUM_WORDS = {
@@ -141,6 +141,7 @@ class SourceStore:
         self._total = 0.0
         self._count = 0
         self._date_index: dict[tuple[int, int], list[tuple[int, int | None]]] = {}
+        self._period_index: dict[tuple[int, int], list[tuple[int, int | None]]] = {}
         self._pair_cache: tuple[int, Index | None] | None = None
 
     def add(
@@ -176,6 +177,8 @@ class SourceStore:
         if kind == "user":
             self.shifts |= _shifts(text)
             self.counts |= {_NUM_WORDS[w.lower()] for w in _COUNT_WORDS.findall(text)}
+            for y, m, d in date_periods(text[: self.max_index_chars], self.as_of):
+                self._period_index.setdefault((m, d), []).append((i, y))
         head = text[: self.max_index_chars]
         src.squeezed = _squeeze(src.low[: self.max_index_chars])
         if src.numbers is None:
@@ -244,6 +247,10 @@ class SourceStore:
         if kind == "url":
             return self._url(text, allowed)
         if kind == "identifier":
+            if text.isdigit() and len(text) >= 5:
+                amount = self._find_strict(float(text), allowed)
+                if amount is not None and amount.how == "exact":
+                    return amount
             return (
                 (self._formatted(text, formats, allowed) if formats else None)
                 or self._separated(text, allowed)
@@ -478,6 +485,11 @@ class SourceStore:
                     best = (i, how)
         if best is not None:
             return Hit(self.sources[best[0]], best[1])
+        for y, m, d in keys:
+            for i, sy in reversed(self._period_index.get((m, d), ())):
+                ok, _ = self._year_ok(y, sy, m, d)
+                if ok and (allowed is None or _allowed(self.sources[i], allowed)):
+                    return Hit(self.sources[i], "derived:period", "a bound of a period the user named")
         if not self.shifts or not shift_ok:
             return None
         now = self.as_of or self.latest

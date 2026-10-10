@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import re
 from dataclasses import dataclass
@@ -43,6 +44,19 @@ _MONTH = (
     r"|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
 )
 _ISO = re.compile(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)")
+_SHORT_ISO = re.compile(r"(?<![\w-])(\d{2})-(\d{2})-(\d{2})(?!\w)")
+_ISO_DATETIME = re.compile(
+    r"^\d{4}-\d{1,2}-\d{1,2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:Z|[+-]\d{2}:?\d{2}|UTC)?$",
+    re.IGNORECASE,
+)
+_PERIOD_MONTH = re.compile(r"\b" + _MONTH + r"\b\.?(?:,?\s+(\d{4}))?", re.IGNORECASE)
+_PERIOD_YEAR = re.compile(
+    r"\b(?:in|for|during|of|since|throughout|from|year)\s+((?:19|20)\d{2})\b(?!\s*[-/]\d)", re.IGNORECASE
+)
+_PERIOD_RELATIVE = re.compile(r"\b(this|current|last|previous|past|next)\s+(month|year)\b", re.IGNORECASE)
+_DAY_OF_MONTH = re.compile(
+    r"\bthe\s+(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(this|the|next|last)\s+month\b", re.IGNORECASE
+)
 _SLASH = re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?![\d/])")
 _MONTH_DAY = re.compile(_MONTH + r"\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?", re.IGNORECASE)
 _DAY_MONTH = re.compile(
@@ -172,6 +186,8 @@ def numeric_string(s: str) -> float | None:
 
 def is_date_literal(s: str) -> bool:
     s = s.strip()
+    if _ISO_DATETIME.match(s):
+        return True
     for rx in (_ISO, _SLASH, _MONTH_DAY, _DAY_MONTH):
         m = rx.match(s)
         if m and m.end() >= len(s.rstrip(".")) - 9:
@@ -205,6 +221,8 @@ def parse_dates(text: str, as_of: dt.date | None = None, *, intl: bool = True) -
     has_month = any(mon in low for mon in _MONTH3)
     for m in _ISO.finditer(text) if has_digit_dash else ():
         _add(out, int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    for m in _SHORT_ISO.finditer(text) if has_digit_dash else ():
+        _add(out, 2000 + int(m.group(1)), int(m.group(2)), int(m.group(3)))
     for m in _SLASH.finditer(text) if has_slash else ():
         a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         year = y + 2000 if y < 100 else y
@@ -225,6 +243,11 @@ def parse_dates(text: str, as_of: dt.date | None = None, *, intl: bool = True) -
         _add(out, int(m.group(3)) if m.group(3) else None, _INTL_MONTHS[m.group(2).lower()], int(m.group(1)))
     for m in _CJK.finditer(text) if "月" in text else ():
         _add(out, int(m.group(1)) if m.group(1) else None, int(m.group(2)), int(m.group(3)))
+    if as_of is not None and "of" in low and "month" in low:
+        for m in _DAY_OF_MONTH.finditer(text):
+            step = {"next": 1, "last": -1}.get(m.group(2).lower(), 0)
+            y, mo = divmod(as_of.year * 12 + as_of.month - 1 + step, 12)
+            _add(out, y, mo + 1, int(m.group(1)))
     if as_of is not None and "end of" in low:
         for m in _MONTH_END.finditer(text):
             first = (as_of.replace(day=1) + dt.timedelta(days=32 * (2 if m.group(1) else 1))).replace(day=1)
@@ -272,6 +295,50 @@ def number_words(text: str) -> list[float]:
         value = total + current
         if value > 12:
             out.append(float(value))
+    return out
+
+
+def date_periods(text: str, as_of: dt.date | None = None) -> set[DateKey]:
+    """The first and last days of periods a user names, and the day after each, which search tools
+    take as range bounds: "August" -> 08-01, 08-31, 09-01; "in 2024" -> 2024-01-01, 2024-12-31,
+    2025-01-01; "last month" against the reference date. A month without a year has no year."""
+    out: set[DateKey] = set()
+    low = text.lower()
+
+    def month(y: int | None, mo: int) -> None:
+        last = calendar.monthrange(y or 2024, mo)[1]
+        _add(out, y, mo, 1)
+        _add(out, y, mo, last)
+        if y is None and mo == 2:
+            _add(out, None, 2, 28)
+        ny, nm = (y + 1 if y else None, 1) if mo == 12 else (y, mo + 1)
+        _add(out, ny, nm, 1)
+
+    def year(y: int) -> None:
+        _add(out, y, 1, 1)
+        _add(out, y, 12, 31)
+        _add(out, y + 1, 1, 1)
+
+    if any(mon in low for mon in _MONTH3):
+        for m in _PERIOD_MONTH.finditer(text):
+            name = m.group(1).lower()
+            if (
+                name == "may"
+                and not m.group(2)
+                and not re.search(r"\b(?:in|of|for|during|since|until|through)\s+$", low[: m.start()])
+            ):
+                continue
+            month(int(m.group(2)) if m.group(2) else None, MONTHS[name[:3]])
+    for m in _PERIOD_YEAR.finditer(text):
+        year(int(m.group(1)))
+    if as_of is not None and ("month" in low or "year" in low):
+        for m in _PERIOD_RELATIVE.finditer(text):
+            step = {"last": -1, "previous": -1, "past": -1, "next": 1}.get(m.group(1).lower(), 0)
+            if m.group(2).lower() == "month":
+                y, mo = divmod(as_of.year * 12 + as_of.month - 1 + step, 12)
+                month(y, mo + 1)
+            else:
+                year(as_of.year + step)
     return out
 
 

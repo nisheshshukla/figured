@@ -43,6 +43,13 @@ _ID_NAME = re.compile(
     r"(?:^|[._\-\[])(?:id|ids|item|items|sku|zip|postal|code|account|number|no)\]?$|id\]?$", re.IGNORECASE
 )
 _MAX_DEPTH = 64
+_BOUND = re.compile(
+    r"^(?:start|end|from|to|since|until|after|before|begin)(?:_?(?:date|time|at|day|ts|timestamp))?$"
+    r"|^(?:date|time|created|updated)_?(?:from|to|start|end|after|before|since|until|min|max|gte|lte|gt|lt)$"
+    r"|^(?:min|max)(?:_?\w+)?$|^\w+_(?:min|max|gte|lte)$"
+    r"|^(?:limit|offset|page|page_size|per_page|top_k|top_n|count|size|max_results|num_results|n)$",
+    re.IGNORECASE,
+)
 _TOO_DEEP = object()
 _DIGIT_RUN = re.compile(r"(?<![\w.,$])\d{6,}(?![\w.,])")
 _AFFIRM = re.compile(
@@ -113,6 +120,12 @@ class AgentPolicy:
         ("cancel_reservation" requires "get_reservation_details").
     on_selection / on_requires: severity for the three checks above.
     on_unknown_tool: severity for a call to a tool that is not among the `tools` the monitor was given.
+    read_tools: tool patterns that only read ("get_*", "search_*"...); a tool whose schema carries the
+        MCP annotation readOnlyHint is one too.
+    search_bounds: "skip" (the default) does not check the bounds and paging of a read call (a
+        start_date, an end, a min_amount, a limit): agents choose search windows and page sizes
+        themselves, and a made-up bound reads nothing it should not. Identifiers in read calls are
+        still checked, since a guessed user ID or zip is a real error. "check" checks them too.
     """
 
     kinds: frozenset[str] = frozenset({"identifier", "email", "url", "date", "number", "phrase"})
@@ -141,6 +154,11 @@ class AgentPolicy:
     on_selection: Severity = "confirm"
     on_requires: Severity = "warn"
     on_unknown_tool: Severity = "block"
+    read_tools: tuple[str, ...] = (
+        "get_*", "find_*", "list_*", "search_*", "check_*", "read_*", "lookup_*", "fetch_*",
+        "query_*", "view_*", "show_*", "describe_*", "count_*",
+    )  # fmt: skip
+    search_bounds: Literal["skip", "check"] = "skip"
 
     @classmethod
     def build(cls, source_rules: dict[str, set[str] | list[str]] | None = None, **kw: Any) -> AgentPolicy:
@@ -148,7 +166,14 @@ class AgentPolicy:
         for name in ("kinds", "constants"):
             if name in kw:
                 kw[name] = frozenset(x.lower() if name == "constants" else x for x in kw[name])
-        for name in ("ignore", "block_unsourced", "pure_tools", "confirm_before", "ambiguous_before"):
+        for name in (
+            "ignore",
+            "block_unsourced",
+            "pure_tools",
+            "confirm_before",
+            "ambiguous_before",
+            "read_tools",
+        ):
             if name in kw:
                 kw[name] = tuple(kw[name])
         if isinstance(kw.get("requires"), dict):
@@ -169,6 +194,9 @@ class AgentPolicy:
 
     def pure(self, tool: str) -> bool:
         return any(fnmatch.fnmatchcase(tool, p) for p in self.pure_tools)
+
+    def reads(self, tool: str) -> bool:
+        return any(fnmatch.fnmatchcase(tool, p) for p in self.read_tools)
 
     def needs_confirmation(self, tool: str) -> bool:
         return any(fnmatch.fnmatchcase(tool, p) for p in self.confirm_before)
@@ -328,6 +356,11 @@ class RunMonitor:
         self._pending: dict[str, tuple[str, list[str], str]] = {}
         self._last_by_tool: dict[str, tuple[str, list[str], str]] = {}
         self._hints = _schema_hints(tools or [], self.policy.schema_formats)
+        self._read_only = {
+            str(t.get("function", t).get("name"))
+            for t in tools or ()
+            if (t.get("annotations") or t.get("function", t).get("annotations") or {}).get("readOnlyHint")
+        }
         self._tools = {
             str(t.get("function", t).get("name")) for t in tools or () if t.get("function", t).get("name")
         }
@@ -380,6 +413,7 @@ class RunMonitor:
         findings: list[Finding] = []
         silent: list[str] = []
         pure = pol.pure(name)
+        bounds_free = pol.search_bounds == "skip" and (name in self._read_only or pol.reads(name))
         named = ""
         leaves = _leaves(args)
         for path, value in leaves:
@@ -416,6 +450,8 @@ class RunMonitor:
                                 )
                 continue
             if kind not in pol.kinds:
+                continue
+            if bounds_free and kind in ("date", "number") and _BOUND.match(_key(path)):
                 continue
             if kind == "number" and isinstance(value, str):
                 value = numeric_string(value)
@@ -715,6 +751,11 @@ def _read_as_of(text: str) -> dt.date | None:
                 except ValueError:
                     continue
     return None
+
+
+def _key(path: str) -> str:
+    """The last name in an argument path: "filters.start_date" -> "start_date"."""
+    return path.rsplit(".", 1)[-1].replace("[]", "")
 
 
 def _resource(token: str) -> str:
