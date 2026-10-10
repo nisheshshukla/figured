@@ -238,6 +238,14 @@ report.ok, report.unsourced, report.findings, report.to_dict()
 
 ### Measured on public agent runs
 
+**A clean measurement first.** After 0.4.0, every benchmark below had been used during development, so 0.4.0 was measured again on data it had never seen, with the protocol committed before the run ([protocol](docs/clean-eval-protocol.md), [results](docs/clean-eval-results.md)). On new models and runs in familiar domains, the development numbers held:
+
+- tau2-bench airline and retail: 1.1% of successful runs flagged, against 14.9% for the baseline, and 98% of corrupted values caught.
+- AgentDojo, four new models: 86% of successful injections flagged with source rules.
+
+**On new domains they did not.** In ToolScale's banking and medicine runs, 12.8% of successful runs were flagged, about as often as the substring baseline, mostly for date ranges ("August" → the 1st to the 31st) and date formats figured does not derive or read, and for search parameters agents choose themselves. Read the numbers below as what figured does in domains like the ones it was tuned on.
+
+
 Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics, and is replayed with its tools' schemas, as an agent would be given them. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).
 
 | figured / baseline | tau-bench, development: 1,980 runs, GPT-4o and Claude 3.5 Sonnet | tau2-bench telecom, held out: 912 runs, GPT-4.1 and Claude 3.7 Sonnet |

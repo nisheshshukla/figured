@@ -1,0 +1,20 @@
+
+== ToolScale deepseek-v4-pro: 112 successful, 172 failed runs, 6.2 s
+   successful runs flagged   figured   4.5%  baseline   3.6%
+   failed runs flagged       figured  61.0%  baseline  65.7%
+   corruptions caught        figured 307/310  baseline 309
+   substitutions caught      figured 0/112  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful   1.9% of writes, failed  47.5%
+   confirm_before asks       successful   7.7% of writes, failed  55.6%
+
+== ToolScale Qwen-3.6-plus: 285 successful, 297 failed runs, 11.6 s
+   successful runs flagged   figured  16.1%  baseline  14.4%
+   failed runs flagged       figured  20.2%  baseline  19.9%
+   corruptions caught        figured 771/774  baseline 771
+   substitutions caught      figured 0/309  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful   2.7% of writes, failed   0.0%
+   confirm_before asks       successful   2.7% of writes, failed   0.0%
+
+== speed on ToolScale: 3899 calls, before_call p50 27.3 µs, p99 279.6 µs

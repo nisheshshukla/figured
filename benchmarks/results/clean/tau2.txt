@@ -1,0 +1,80 @@
+
+== claude-3-7-sonnet-20250219_airline_default: 100 successful, 100 failed runs, 5.6 s
+   successful runs flagged   figured   2.0%  baseline  24.0%
+   failed runs flagged       figured   8.0%  baseline  37.0%
+   corruptions caught        figured 251/277  baseline 217
+   substitutions caught      figured 0/144  baseline 1
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful  43.2% of writes, failed  17.1%
+   confirm_before asks       successful  65.8% of writes, failed  29.8%
+   real wrong values flagged 3/94  baseline 3; unneeded writes flagged 0/80
+
+== gpt-4.1-2025-04-14_airline_default: 112 successful, 88 failed runs, 4.5 s
+   successful runs flagged   figured   3.6%  baseline  25.0%
+   failed runs flagged       figured   3.4%  baseline  39.8%
+   corruptions caught        figured 243/272  baseline 210
+   substitutions caught      figured 2/120  baseline 2
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful  49.4% of writes, failed  32.6%
+   confirm_before asks       successful  82.8% of writes, failed  49.6%
+   real wrong values flagged 3/96  baseline 10; unneeded writes flagged 0/33
+
+== o4-mini-2025-04-16_airline_default: 118 successful, 82 failed runs, 4.4 s
+   successful runs flagged   figured   2.5%  baseline  20.3%
+   failed runs flagged       figured   7.3%  baseline  29.3%
+   corruptions caught        figured 283/304  baseline 245
+   substitutions caught      figured 0/112  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful  27.4% of writes, failed  16.7%
+   confirm_before asks       successful  51.2% of writes, failed  45.6%
+   real wrong values flagged 3/59  baseline 4; unneeded writes flagged 0/23
+
+== gpt-4.1-mini-2025-04-14_airline_base: 101 successful, 99 failed runs, 4.8 s
+   successful runs flagged   figured   1.0%  baseline  25.7%
+   failed runs flagged       figured  11.1%  baseline  47.5%
+   corruptions caught        figured 261/274  baseline 217
+   substitutions caught      figured 0/117  baseline 1
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful  25.3% of writes, failed  26.6%
+   confirm_before asks       successful  56.6% of writes, failed  43.9%
+   real wrong values flagged 6/156  baseline 13; unneeded writes flagged 7/63
+
+== claude-3-7-sonnet-20250219_retail_default: 359 successful, 97 failed runs, 14.5 s
+   successful runs flagged   figured   0.0%  baseline  10.0%
+   failed runs flagged       figured   0.0%  baseline   8.2%
+   corruptions caught        figured 1075/1077  baseline 1009
+   substitutions caught      figured 0/691  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful   3.6% of writes, failed   9.8%
+   confirm_before asks       successful  12.5% of writes, failed  22.2%
+   real wrong values flagged 0/101  baseline 0; unneeded writes flagged 0/40
+
+== gpt-4.1-2025-04-14_retail_default: 338 successful, 118 failed runs, 12.0 s
+   successful runs flagged   figured   0.0%  baseline   8.3%
+   failed runs flagged       figured   2.5%  baseline   7.6%
+   corruptions caught        figured 1003/1003  baseline 957
+   substitutions caught      figured 0/661  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful   7.3% of writes, failed  11.0%
+   confirm_before asks       successful  15.2% of writes, failed  25.4%
+   real wrong values flagged 2/117  baseline 2; unneeded writes flagged 1/45
+
+== o4-mini-2025-04-16_retail_default: 326 successful, 130 failed runs, 12.3 s
+   successful runs flagged   figured   0.3%  baseline  11.0%
+   failed runs flagged       figured   3.1%  baseline  10.8%
+   corruptions caught        figured 968/968  baseline 890
+   substitutions caught      figured 0/613  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful   2.7% of writes, failed   2.9%
+   confirm_before asks       successful   6.4% of writes, failed  11.4%
+   real wrong values flagged 3/132  baseline 3; unneeded writes flagged 0/9
+
+== gpt-4.1-mini-2025-04-14_retail_base: 301 successful, 155 failed runs, 11.8 s
+   successful runs flagged   figured   2.7%  baseline  19.9%
+   failed runs flagged       figured   3.2%  baseline  16.8%
+   corruptions caught        figured 896/899  baseline 843
+   substitutions caught      figured 0/561  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 0
+   ambiguous_before asks     successful   5.4% of writes, failed   3.9%
+   confirm_before asks       successful  12.2% of writes, failed  12.5%
+   real wrong values flagged 4/136  baseline 4; unneeded writes flagged 1/51
