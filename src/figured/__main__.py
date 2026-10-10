@@ -21,7 +21,14 @@ def main(argv: list[str] | None = None) -> int:
         "--rows", required=True, help="JSON file: a list of objects, a list of arrays, or {columns, rows}"
     )
     p.add_argument("--tolerance", type=float, default=None, help="relative tolerance, default 0.015")
-    p.add_argument("--strict-percent", action="store_true", help="flag percentages that match nothing")
+    p.add_argument(
+        "--allow-unmatched-percent", action="store_true", help="let a percentage that matches nothing pass"
+    )
+    p.add_argument(
+        "--derivations",
+        default=None,
+        help='"all" adds pairwise arithmetic (sums, differences, ratios, percentages) to cells and sums',
+    )
     p.add_argument("--json", action="store_true", help="print the full report as JSON")
     args = p.parse_args(argv)
 
@@ -30,8 +37,10 @@ def main(argv: list[str] | None = None) -> int:
     overrides: dict[str, Any] = {}
     if args.tolerance is not None:
         overrides["rel_tolerance"] = args.tolerance
-    if args.strict_percent:
-        overrides["unmatched_percent"] = "flag"
+    if args.allow_unmatched_percent:
+        overrides["unmatched_percent"] = "pass"
+    if args.derivations:
+        overrides["derivations"] = "all" if args.derivations == "all" else set(args.derivations.split(","))
     report = trace(text, rows, **overrides)
     print(json.dumps(report.to_dict(), indent=2) if args.json else report.explain())
     return 0 if report.ok else 1

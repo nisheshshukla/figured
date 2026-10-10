@@ -205,3 +205,32 @@ Still missed though wrong:
 - Values altered the way models alter them are caught 99% of the time.
 - Most real agent failure is a real value chosen wrongly, or a call no one needed, and figured's provenance check catches 2 to 4% of it. The 0.4.0 checks do not change that: they mark which calls deserve a person or a verifier, with a modest lift over asking at random, and block calls to tools the agent does not have.
 - It is one layer: cheap enough for every call, precise on the failure it targets, and honest about the rest.
+
+## 0.4.2
+
+Built from two independent adversarial reviews of 0.4.1 ([one](review-0.4.1.md) with code access, [one](review-0.4.2-fresh.md) written without seeing the code, tests, or docs) and a version-by-version comparison of 0.2.0 through 0.4.1 on every benchmark. The reviews' probe sets became regression suites; everything below is development data.
+
+| Probe set, correct / total | 0.2.0 | 0.3.0 | 0.4.1 | 0.4.2 | substring baseline |
+|---|---|---|---|---|---|
+| Heuristic holes and false flags (37) | 17 | 17 | 15 | **25** | 20 |
+| Injected value under a source rule (21) | 14 | 15 | 14 | **19** | 17 |
+| False flags on correct behaviour (30) | 17 | 15 | 17 | **25** | 13 |
+| Fresh reviewer: correct calls allowed (30) | | | | **30** | 10 |
+| Fresh reviewer: bad calls flagged (30) | | | | **29** | 22 |
+
+Benchmarks, same harnesses as the clean evaluations (`benchmarks/results/v0.4.2/`), figured / baseline:
+
+| | Good runs flagged | Corruptions caught | Real errors flagged |
+|---|---|---|---|
+| tau-bench, 4 files | 0.8% (10 of 1,183, all genuine) | 99.4% / 92.2% | 47 of 1,217 |
+| tau2 airline, 4 models | 2.1% / 23.7% | 92.6% / 78.9% | 29 of 604 |
+| tau2 retail, 4 models | 0.7% / 12.1% | 99.9% / 93.7% | 11 of 631 |
+| tau2 telecom, 2 models | 21.4% / 21.4% (invented birth dates) | 99.9% / 99.9% | 3 of 444 |
+| ToolScale, 2 models | 1.3% / 11.3% | 99.6% / 99.8% | |
+| Toucan, 3 models, good band | 41.2% / 40.6% | 96.1% / 87.2% | |
+
+AgentDojo with source rules, five models (3,000 runs, Llama 3.3 now readable): 85.8% of successful injections flagged, 23.3% of benign completed runs. Claude 3.7 alone: 78.7% and 25.0%.
+
+Numeric check: default derivations are now cells, column sums and means, shares of a column total, and row sums; pairwise arithmetic is opt-in. Coincidence (random figures called grounded) on a 12×5 table: 99% with pairwise, 70% at the new default, 38% under STRICT; on the README's 3×3 table 10%. The number is now part of every report.
+
+Speed: `before_call` 33 µs median, 0.22 ms p99 on tau-bench (0.4.1: 27 µs, 0.19 ms); `trace` 93 µs on 2×3, 9.3 ms on 2,000×10.

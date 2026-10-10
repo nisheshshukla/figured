@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
-DERIVATIONS = ("cell", "column_sum", "row_sum", "difference", "sum", "ratio", "percent", "percent_change")
+DERIVATIONS = (
+    "cell", "column_sum", "column_mean", "share", "row_sum",
+    "difference", "sum", "ratio", "percent", "percent_change",
+)  # fmt: skip
+DEFAULT_DERIVATIONS = ("cell", "column_sum", "column_mean", "share", "row_sum")
+PAIRWISE = ("difference", "sum", "ratio", "percent", "percent_change")
 
 
 @dataclass(frozen=True)
@@ -17,10 +22,14 @@ class Policy:
     ignore_below: plain figures at or below this value are not checked (counts of items, rankings);
         currency and percent figures are always checked.
     ignore_years: treat bare four-digit integers between year_range as years and skip them.
-    unmatched_percent: "pass" lets a percentage through when nothing matches, since shares of a
-        total outside the rows are common; "flag" treats it like any other figure.
+    unmatched_percent: "flag" (the default) treats a percentage that matches nothing like any other
+        figure; "pass" lets it through, for answers that quote shares of a total outside the rows.
     max_rows / max_cells: how many rows and flat cells feed the pairwise derivations.
-    derivations: which candidate kinds are generated.
+    derivations: which candidate kinds are generated. The default is cells, column sums and means, a
+        cell's share of its column total (for percentages), and row sums.
+        "all" adds the pairwise arithmetic (difference, sum, ratio, percent, percent change). Pairwise
+        candidates over more than a handful of cells cover almost any value at 1.5% tolerance, so
+        turn them on only for small tables, and read `Report.coincidence()` first.
     parse_strings: coerce numeric strings in the rows ("39,346,023", "$1,200", "12%").
     flag_without_evidence_above: with no rows at all, figures above this are flagged.
     """
@@ -30,10 +39,10 @@ class Policy:
     ignore_below: float = 100.0
     ignore_years: bool = True
     year_range: tuple[int, int] = (1900, 2100)
-    unmatched_percent: Literal["pass", "flag"] = "pass"
+    unmatched_percent: Literal["pass", "flag"] = "flag"
     max_rows: int = 12
     max_cells: int = 40
-    derivations: frozenset[str] = frozenset(DERIVATIONS)
+    derivations: frozenset[str] = frozenset(DEFAULT_DERIVATIONS)
     parse_strings: bool = True
     flag_without_evidence_above: float = 1000.0
 
@@ -41,7 +50,8 @@ class Policy:
         if not overrides:
             return self
         if "derivations" in overrides and not isinstance(overrides["derivations"], frozenset):
-            overrides["derivations"] = frozenset(overrides["derivations"])
+            d = overrides["derivations"]
+            overrides["derivations"] = frozenset(DERIVATIONS if d == "all" else d)
         unknown = set(overrides) - set(self.__dataclass_fields__)
         if unknown:
             raise TypeError(f"unknown policy option(s): {', '.join(sorted(unknown))}")
@@ -58,4 +68,4 @@ class Policy:
 
 
 STRICT = Policy(rel_tolerance=0.005, unmatched_percent="flag", ignore_below=10.0)
-LENIENT = Policy(rel_tolerance=0.05)
+LENIENT = Policy(rel_tolerance=0.05, unmatched_percent="pass")

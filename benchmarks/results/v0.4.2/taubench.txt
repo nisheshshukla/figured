@@ -1,0 +1,99 @@
+
+== gpt-4o-retail: 278 successful, 182 failed runs, 3274 tool calls, 9.5 s
+   runs with an argument flag     figured: successful   0.4%  failed   1.6%
+                                  baseline: successful  14.0%  failed   7.1%
+   real errors in failed runs' writes: 206; flagged by figured 4 (  1.9%), baseline 2 (  1.0%)
+      identifier                                             131   figured    3   baseline    1
+      write to a tool the task never required                 46   figured    1   baseline    1
+      phrase                                                  18   figured    0   baseline    0
+      not checked (no digits, names, enums, small counts)     11   figured    0   baseline    0
+   absent corruptions: caught by figured 824/824 (100.0%), baseline 775/824 ( 94.1%)
+      email           42/42    figured 100.0%   baseline 100.0%
+      identifier     763/763   figured 100.0%   baseline  93.6%
+      phrase          19/19    figured 100.0%   baseline 100.0%
+   substitutions with a real value: caught by figured 0/498 (  0.0%), baseline 0/498 (  0.0%)
+      email            0/40    figured   0.0%   baseline   0.0%
+      identifier       0/458   figured   0.0%   baseline   0.0%
+      [flag_ok] gpt-4o-retail:45/0 exchange_delivered_order_items.payment_method_id = 'gift_card_0000000'
+      [real_catch] gpt-4o-retail:87/1 modify_pending_order_address.zip = '20001', expected ['"20307"']
+      [real_catch] gpt-4o-retail:87/1 modify_pending_order_address.zip = '20001', expected ['"20307"']
+      [real_catch] gpt-4o-retail:87/1 modify_user_address.zip = '20001', expected ['"20307"']
+
+== gpt-4o-airline: 84 successful, 116 failed runs, 1164 tool calls, 2.7 s
+   runs with an argument flag     figured: successful   4.8%  failed  10.3%
+                                  baseline: successful  14.3%  failed  36.2%
+   real errors in failed runs' writes: 301; flagged by figured 11 (  3.7%), baseline 21 (  7.0%)
+      identifier                                             125   figured    0   baseline    0
+      not checked (no digits, names, enums, small counts)     67   figured    0   baseline    0
+      write to a tool the task never required                 51   figured    2   baseline    2
+      number                                                  42   figured    9   baseline   19
+      date                                                    16   figured    0   baseline    0
+   absent corruptions: caught by figured 191/197 ( 97.0%), baseline 167/197 ( 84.8%)
+      date            24/30    figured  80.0%   baseline  60.0%
+      identifier     164/164   figured 100.0%   baseline  90.9%
+      number           3/3     figured 100.0%   baseline   0.0%
+   substitutions with a real value: caught by figured 0/61 (  0.0%), baseline 0/61 (  0.0%)
+      date             0/31    figured   0.0%   baseline   0.0%
+      identifier       0/27    figured   0.0%   baseline   0.0%
+      number           0/3     figured   0.0%   baseline   0.0%
+      [flag_ok] gpt-4o-airline:26/0 update_reservation_flights.payment_id = 'credit_card_7334'
+      [flag_ok] gpt-4o-airline:20/1 update_reservation_flights.payment_id = 'credit_card_5634230'
+      [flag_ok] gpt-4o-airline:26/2 update_reservation_flights.payment_id = 'credit_card_7334'
+      [flag_ok] gpt-4o-airline:20/3 update_reservation_flights.payment_id = 'credit_card_5634230'
+      [real_catch] gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 100, expected ['250', '5']
+      [real_catch] gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 155, expected ['250', '5']
+      [real_catch] gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 100, expected ['250', '5']
+      [real_catch] gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 205, expected ['250', '5']
+      [real_catch] gpt-4o-airline:10/2 book_reservation.payment_methods[].amount = 124, expected ['39', '67']
+      [real_catch] gpt-4o-airline:25/2 book_reservation.payment_methods[].amount = 274, expected ['290']
+      [real_catch] gpt-4o-airline:0/3 book_reservation.payment_methods[].amount = 100, expected ['250', '5']
+      [real_catch] gpt-4o-airline:0/3 book_reservation.payment_methods[].amount = 205, expected ['250', '5']
+
+== sonnet-35-new-retail: 637 successful, 283 failed runs, 7086 tool calls, 26.1 s
+   runs with an argument flag     figured: successful   0.5%  failed   1.4%
+                                  baseline: successful  12.2%  failed   5.3%
+   real errors in failed runs' writes: 213; flagged by figured 2 (  0.9%), baseline 2 (  0.9%)
+      identifier                                             159   figured    2   baseline    2
+      write to a tool the task never required                 29   figured    0   baseline    0
+      phrase                                                  18   figured    0   baseline    0
+      not checked (no digits, names, enums, small counts)      7   figured    0   baseline    0
+   absent corruptions: caught by figured 1905/1906 ( 99.9%), baseline 1788/1906 ( 93.8%)
+      email          119/119   figured 100.0%   baseline 100.0%
+      identifier    1732/1733  figured  99.9%   baseline  93.2%
+      phrase          54/54    figured 100.0%   baseline 100.0%
+   substitutions with a real value: caught by figured 0/1157 (  0.0%), baseline 0/1157 (  0.0%)
+      email            0/27    figured   0.0%   baseline   0.0%
+      identifier       0/1130  figured   0.0%   baseline   0.0%
+      [flag_ok] sonnet-35-new-retail:23/5 find_user_id_by_name_zip.zip = '98101'
+      [flag_ok] sonnet-35-new-retail:8/7 get_order_details.order_id = '#W0028236'
+      [flag_ok] sonnet-35-new-retail:65/7 find_user_id_by_name_zip.zip = '95112'
+      [real_catch] sonnet-35-new-retail:105/5 modify_pending_order_items.new_item_ids[] = '2411639847', expected ['"8964750292"']
+      [real_catch] sonnet-35-new-retail:105/6 modify_pending_order_items.new_item_ids[] = '5209958008', expected ['"8964750292"']
+
+== sonnet-35-new-airline: 184 successful, 216 failed runs, 2761 tool calls, 6.9 s
+   runs with an argument flag     figured: successful   1.1%  failed   8.3%
+                                  baseline: successful  15.8%  failed  40.7%
+   real errors in failed runs' writes: 497; flagged by figured 30 (  6.0%), baseline 81 ( 16.3%)
+      identifier                                             225   figured    3   baseline    3
+      number                                                  89   figured   21   baseline   62
+      write to a tool the task never required                 89   figured    2   baseline   13
+      not checked (no digits, names, enums, small counts)     73   figured    2   baseline    0
+      date                                                    21   figured    2   baseline    3
+   absent corruptions: caught by figured 453/468 ( 96.8%), baseline 401/468 ( 85.7%)
+      date            57/72    figured  79.2%   baseline  48.6%
+      identifier     393/393   figured 100.0%   baseline  93.1%
+      number           3/3     figured 100.0%   baseline   0.0%
+   substitutions with a real value: caught by figured 0/205 (  0.0%), baseline 2/205 (  1.0%)
+      date             0/123   figured   0.0%   baseline   1.6%
+      identifier       0/79    figured   0.0%   baseline   0.0%
+      number           0/3     figured   0.0%   baseline   0.0%
+      [flag_ok] sonnet-35-new-airline:1/4 get_user_details.user_id = 'olivia_gonzalez_902'
+      [flag_ok] sonnet-35-new-airline:1/5 get_user_details.user_id = 'olivia_gonzalez_631'
+      [real_catch] sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 100, expected ['250', '5']
+      [real_catch] sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 179, expected ['250', '5']
+      [real_catch] sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 100, expected ['250', '5']
+      [real_catch] sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 220, expected ['250', '5']
+      [real_catch] sonnet-35-new-airline:26/0 update_reservation_flights.payment_id = 'credit_card_7334', expected ['"credit_card_9074831"']
+      [real_catch] sonnet-35-new-airline:0/1 book_reservation.payment_methods[].amount = 70, expected ['250', '5']
+      [real_catch] sonnet-35-new-airline:8/1 book_reservation.payment_methods[].amount = 250, expected ['129', '1786']
+      [real_catch] sonnet-35-new-airline:8/1 book_reservation.payment_methods[].amount = 250, expected ['129', '1786']

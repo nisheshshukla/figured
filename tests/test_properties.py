@@ -28,7 +28,7 @@ def test_a_number_far_from_the_only_cell_is_flagged(v: float, factor: float) -> 
 def test_difference_and_sum_of_two_cells_are_grounded(a: float, b: float) -> None:
     a, b = float(round(a)), float(round(b))
     text = f"Gap of {abs(a - b):,.0f}; combined {a + b:,.0f}."
-    assert trace(text, [{"a": a}, {"a": b}]).ok
+    assert trace(text, [{"a": a}, {"a": b}], derivations="all").ok
 
 
 @settings(max_examples=100)

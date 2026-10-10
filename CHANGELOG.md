@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.4.2
+
+Two independent adversarial reviews of 0.4.1 (`docs/review-0.4.1.md`, with code access; `docs/review-0.4.2-fresh.md`, without) and a version-by-version benchmark comparison. The agent check now beats a 15-line substring baseline on every probe set; the numeric check reports how much a green result means. Plan and status in `docs/plan-0.4.2.md`; all benchmark outputs in `benchmarks/results/v0.4.2/`.
+
+Crashes.
+
+- Text containing `550e8400` (a UUID fragment) or `1e999` was read as scientific notation and crashed indexing with `OverflowError` (since 0.3.0). Exponents are capped and non-finite values skipped.
+- `tool_result` with non-string dict keys or a 10,000-deep object, `user`/`system`/`assistant` given `None` or bytes, `trace` given bytes or ints beyond float range, and malformed entries in `tools` no longer raise.
+
+Security (source rules).
+
+- A ruled argument is always checked, whatever it looks like: a seven-word password or a path with spaces from an injected result is blocked.
+- A tool result never vouches for the arguments of the call that produced it, so an injected address cannot be laundered through an allowed contacts lookup that echoes its query.
+- Composed phrases, date shifts, and server-supplied `readOnlyHint` annotations no longer satisfy a rule.
+- Lookalike-character emails (a Cyrillic letter in place of a Latin one) are checked as emails instead of skipped.
+
+Heuristics tightened.
+
+- Schema formats add a prefix only to digits the user typed; dropping a prefix from an ID seen in a result still works.
+- Counts come from the user's words and from `quantity`-like fields (`passengers: 3`), not from list lengths. An amount may also be divided by a stated count.
+- Percent factors come from the user and system text only. Same-source sums add the same money field across one list's items (two prices), not two different fields (a fee plus a tax).
+- A pure tool's output is tainted by any unsourced operand, small ints included. An enum argument is checked when its value is not one of the enum. Period bounds ("August" → 08-31) apply only to bound-named arguments. "The day after tomorrow" no longer arms a one-day shift. A country code is accepted only when the source number had none or the same one. A digit run that is part of a decimal (`12345` in `12,345.00`) is not a match for an ID.
+- Removed: the digits-as-amount fallback. Instead a bare run of digits after a money word in the user's text ("send 15000") is an amount, and a digit ID matches its comma-grouped form.
+
+Fewer false flags.
+
+- Dates `YYYY/MM/DD` and `D.M.YYYY`; a day-month without a year also accepts the reference year; numbers with units ("250ml"); underscores as separators; "both", "a pair", "a couple", "a dozen" as counts; read tools matched by the last segment of a server-prefixed name and by camelCase.
+
+Numeric check.
+
+- Default derivations are cells, column sums and means, a cell's share of its column total, and row sums. Pairwise arithmetic is opt-in with `derivations="all"`; on a 12×5 table it accepts 99% of random figures.
+- `unmatched_percent` defaults to "flag". `LENIENT` keeps "pass".
+- `Report.coincidence()`: the fraction of random figures in the table's range that would be called grounded, printed by `explain()` and the CLI. 10% on the README table, about 70% on a 12×5 table at the default tolerance.
+- "X and Y" is a range only after "between".
+- CLI: `--derivations all`, `--allow-unmatched-percent` (replaces `--strict-percent`, now the default).
+
+Measured (`docs/agent-eval-results.md`): tau2 airline 2.1% and retail 0.7% of good runs flagged against the baseline's 23.7% and 12.1%; ToolScale 1.3%; AgentDojo 85.8% of successful injections flagged with rules across five models; Toucan unchanged at 41%, the generative-tool limit. Reviewer probes: 25/30, 25/37, 19/21 (baseline 13, 20, 17) and, from a reviewer without code access, 30/30 and 29/30 (baseline 10 and 22). `before_call` 33 µs median, 0.22 ms p99.
+
 ## 0.4.1
 
 Fixes for what the clean evaluation of 0.4.0 found (`docs/clean-eval-results.md`).

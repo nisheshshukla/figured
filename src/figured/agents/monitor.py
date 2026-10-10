@@ -24,7 +24,7 @@ from typing import Any, Literal
 from figured.extract import extract_numbers, scan_values
 from figured.policy import Policy
 
-from .store import Hit, SourceStore
+from .store import MAX_INDEX_CHARS, Hit, SourceStore
 from .values import Kind, classify, extract_text_values, numeric_string, parse_dates
 
 Severity = Literal["warn", "confirm", "block"]
@@ -120,8 +120,9 @@ class AgentPolicy:
         ("cancel_reservation" requires "get_reservation_details").
     on_selection / on_requires: severity for the three checks above.
     on_unknown_tool: severity for a call to a tool that is not among the `tools` the monitor was given.
-    read_tools: tool patterns that only read ("get_*", "search_*"...); a tool whose schema carries the
-        MCP annotation readOnlyHint is one too.
+    read_tools: tool patterns that only read ("get_*", "search_*"...), matched against the name, the
+        last segment of a server-prefixed name, and its snake_case form. Annotations a tool server
+        supplies (readOnlyHint) are not trusted: a server can call anything read-only.
     search_bounds: "skip" (the default) does not check the bounds and paging of a read call (a
         start_date, an end, a min_amount, a limit): agents choose search windows and page sizes
         themselves, and a made-up bound reads nothing it should not. Identifiers in read calls are
@@ -196,7 +197,11 @@ class AgentPolicy:
         return any(fnmatch.fnmatchcase(tool, p) for p in self.pure_tools)
 
     def reads(self, tool: str) -> bool:
-        return any(fnmatch.fnmatchcase(tool, p) for p in self.read_tools)
+        """Also matches the last segment of a server-prefixed MCP name (pubmed-mcp-server-search_x)
+        and camelCase (getOrder -> get_order)."""
+        last = tool.rsplit("-", 1)[-1] if "-" in tool and "_" in tool.rsplit("-", 1)[-1] else tool
+        snake = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", last).lower()
+        return any(fnmatch.fnmatchcase(t, p) for t in {tool, last, snake} for p in self.read_tools)
 
     def needs_confirmation(self, tool: str) -> bool:
         return any(fnmatch.fnmatchcase(tool, p) for p in self.confirm_before)
@@ -353,18 +358,15 @@ class RunMonitor:
         self.step = 0
         self._calls: Counter[str] = Counter()
         self._errored: set[str] = set()
-        self._pending: dict[str, tuple[str, list[str], str]] = {}
-        self._last_by_tool: dict[str, tuple[str, list[str], str]] = {}
+        self._pending: dict[str, tuple[str, list[str], list[str], str]] = {}
+        self._last_by_tool: dict[str, tuple[str, list[str], list[str], str]] = {}
         self._hints = _schema_hints(tools or [], self.policy.schema_formats)
-        self._read_only = {
-            str(t.get("function", t).get("name"))
-            for t in tools or ()
-            if (t.get("annotations") or t.get("function", t).get("annotations") or {}).get("readOnlyHint")
-        }
+        tools = [t for t in tools or () if isinstance(t, dict)]
         self._tools = {
             str(t.get("function", t).get("name")) for t in tools or () if t.get("function", t).get("name")
         }
         self._named: dict[str, str] = {}
+        self._reads_cache: dict[str, bool] = {}
         self._called: list[str] = []
         self._window: list[str] = []
         self._confirmed: str | None = None
@@ -372,11 +374,13 @@ class RunMonitor:
             self.system(system)
 
     def system(self, text: str) -> None:
+        text = _as_text(text)
         if self.policy.as_of == "auto" and self.store.as_of is None:
             self.store.as_of = _read_as_of(text)
         self.store.add("system", "system", self._next(), text)
 
     def user(self, text: str) -> None:
+        text = _as_text(text)
         self.store.add("user", "user", self._next(), text)
         for m in _NAMED.finditer(text):
             token = next(g for g in m.groups() if g)
@@ -385,19 +389,28 @@ class RunMonitor:
         self._confirmed = "\n".join(self._window) if affirmed and self._window else None
 
     def tool_result(self, name: str, output: Any, call_id: str | None = None) -> None:
-        """Record a tool result. If the call that produced it used values with no source, the result
-        is tainted: an error that echoes a made-up ID, or a calculator fed made-up operands, does not
-        vouch for those values later."""
-        text = output if isinstance(output, str) else json.dumps(output, default=str)
+        """Record a tool result. A result never vouches for the arguments of the call that produced it:
+        a lookup keyed by X returning X says nothing about where X came from, so an error that echoes
+        a made-up ID, or a contacts search that echoes an injected address, adds no source. If a pure
+        tool was fed values with no source, its whole output is tainted."""
+        if isinstance(output, str):
+            text = output
+        elif isinstance(output, bytes):
+            text = output.decode("utf-8", errors="replace")
+        else:
+            try:
+                text = json.dumps(output, default=str)
+            except (TypeError, ValueError, RecursionError):
+                text = "\n".join(f"{p}: {v}" for p, v in _leaves(output) if v is not _TOO_DEEP)[
+                    : 2 * MAX_INDEX_CHARS
+                ]
         step = self._next()
         call = self._pending.pop(call_id, None) if call_id else None
         if call is None:
             call = self._last_by_tool.get(name)
-        key, unsourced, named = call if call is not None else (None, [], "")
+        key, unsourced, echoes, named = call if call is not None else (None, [], [], "")
         tainted = bool(unsourced) and self.policy.pure(name)
-        self.store.add(
-            "tool", f"tool:{name}", step, text, tainted=tainted, echoes=set(unsourced), named=named
-        )
+        self.store.add("tool", f"tool:{name}", step, text, tainted=tainted, echoes=set(echoes), named=named)
         if key and _ERROR.search(text[:200]):
             self._errored.add(key)
 
@@ -413,7 +426,7 @@ class RunMonitor:
         findings: list[Finding] = []
         silent: list[str] = []
         pure = pol.pure(name)
-        bounds_free = pol.search_bounds == "skip" and (name in self._read_only or pol.reads(name))
+        bounds_free = pol.search_bounds == "skip" and self._reads(name)
         named = ""
         leaves = _leaves(args)
         for path, value in leaves:
@@ -432,8 +445,15 @@ class RunMonitor:
             hint = self._hints.get(where)
             if hint and any(k in hint and hint[k] == value for k in ("default", "const")):
                 continue
+            rule = pol.rule_for(where) if pol.source_rules else None
+            ruled = rule is not None
             kind = classify(value, hint)
-            if kind is None and _ruled_string(value, hint) and pol.rule_for(where) is not None:
+            if (
+                kind is None
+                and isinstance(value, str)
+                and value.strip()
+                and (ruled or _off_enum(value, hint))
+            ):
                 kind = "phrase" if " " in value.strip() else "identifier"
             if kind is None:
                 if isinstance(value, str) and pol.free_text == "extract" and _is_free_text(value):
@@ -460,7 +480,12 @@ class RunMonitor:
             if self._skip(kind, value):
                 continue
             formats = hint.get("_formats") if hint else None
-            checks.append(self._trace(step, where, kind, value, findings, formats=formats))
+            period_ok = kind == "date" and bool(_BOUND.match(_key(path)))
+            checks.append(
+                self._trace(
+                    step, where, kind, value, findings, formats=formats, period_ok=period_ok, rule=rule
+                )
+            )
         if pol.needs_confirmation(name) or pol.checks_ambiguity(name):
             self._selection(step, name, checks, findings)
             if pol.needs_confirmation(name):
@@ -477,14 +502,17 @@ class RunMonitor:
         self._called.append(name)
         try:
             key = f"{name}({json.dumps(args, sort_keys=True, default=str)})"
-        except (ValueError, RecursionError):
+        except (TypeError, ValueError, RecursionError):
             key = f"{name}({id(args)})"
         self._calls[key] += 1
         self.report_.tool_calls += 1
         unsourced = [_num_or_text(c.value) for c in checks if c.status != "sourced"] + silent
-        self._last_by_tool[name] = (key, unsourced, named)
+        echoes = unsourced + [
+            _num_or_text(v) for _, v in leaves if isinstance(v, str | int | float) and not isinstance(v, bool)
+        ]
+        self._last_by_tool[name] = (key, unsourced, echoes, named)
         if call_id:
-            self._pending[call_id] = (key, unsourced, named)
+            self._pending[call_id] = (key, unsourced, echoes, named)
         n = self._calls[key]
         if n >= pol.max_repeats:
             findings.append(
@@ -524,6 +552,7 @@ class RunMonitor:
         return Decision(action, tuple(findings), tuple(checks))
 
     def assistant(self, text: str) -> list[ValueCheck]:
+        text = _as_text(text)
         step = self._next()
         if text and text.strip():
             self._window.append(text)
@@ -566,6 +595,12 @@ class RunMonitor:
     def report(self) -> RunReport:
         return self.report_
 
+    def _reads(self, name: str) -> bool:
+        cached = self._reads_cache.get(name)
+        if cached is None:
+            cached = self._reads_cache[name] = self.policy.reads(name)
+        return cached
+
     def _pure_unsourced(self, value: Any) -> list[str]:
         """Numbers fed to a pure tool that are not in context. Not reported (a calculator may be given
         anything); used only so its output does not vouch for a result built from them."""
@@ -574,7 +609,7 @@ class RunMonitor:
         nums = [float(value)] if isinstance(value, int | float) else scan_values(str(value))
         out = []
         for v in nums:
-            if v.is_integer() and abs(v) <= self.policy.small_ints:
+            if v.is_integer() and abs(v) <= self.policy.small_ints and self.store.has_count(v):
                 continue
             if self.store.find("number", v, strict=True) is None and self.store.find("number", v) is None:
                 out.append(_num_or_text(v))
@@ -642,19 +677,27 @@ class RunMonitor:
         literal: str | None = None,
         prose: bool = False,
         formats: list[tuple[str, int, str]] | None = None,
+        period_ok: bool = False,
+        rule: frozenset[str] | None = None,
     ) -> ValueCheck:
         shown = literal if literal is not None else value
         strict = where != "text" and not prose
         shift_ok = not _BIRTH.search(where)
-        rule = self.policy.rule_for(where) if where != "text" else None
+        if rule is None and where != "text" and self.policy.source_rules:
+            rule = self.policy.rule_for(where)
         allowed = set(rule) if rule else None
-        hit = self.store.find(kind, value, allowed, strict=strict, shift_ok=shift_ok, formats=formats)
+        shift_ok = shift_ok and rule is None
+        hit = self.store.find(
+            kind, value, allowed, strict=strict, shift_ok=shift_ok, formats=formats, period_ok=period_ok
+        )
         if hit is not None:
             if kind == "number" and hit.how.startswith("derived") and not strict:
                 self.store.add("derived", "derived", step, "", numbers=[float(value)])
             return _check(step, where, shown, kind, "sourced", hit)
         if rule:
-            anywhere = self.store.find(kind, value, strict=strict, shift_ok=shift_ok, formats=formats)
+            anywhere = self.store.find(
+                kind, value, strict=strict, shift_ok=shift_ok, formats=formats, period_ok=period_ok
+            )
             if anywhere is not None:
                 level: Severity = self.policy.on_rule
                 message = (
@@ -753,6 +796,17 @@ def _read_as_of(text: str) -> dt.date | None:
     return None
 
 
+def _as_text(x: Any) -> str:
+    """Whatever a caller hands in as a message: bytes are decoded, other objects stringified."""
+    if isinstance(x, str):
+        return x
+    if x is None:
+        return ""
+    if isinstance(x, bytes | bytearray):
+        return bytes(x).decode("utf-8", errors="replace")
+    return str(x)
+
+
 def _key(path: str) -> str:
     """The last name in an argument path: "filters.start_date" -> "start_date"."""
     return path.rsplit(".", 1)[-1].replace("[]", "")
@@ -781,12 +835,12 @@ def _in_text(text: str, kind: Kind, value: Any, as_of: dt.date | None) -> bool:
     return any(n and (n in low or n.replace("-", "") in squeeze) for n in (needle, needle.lstrip("#")))
 
 
-def _ruled_string(value: Any, hint: dict[str, Any] | None) -> bool:
-    """A short string a source rule should still check although it has no digits: a password, a
-    user name. A rule is about where a value came from, whatever it looks like."""
-    if not isinstance(value, str) or not value.strip() or _is_free_text(value):
+def _off_enum(value: str, hint: dict[str, Any] | None) -> bool:
+    """A string argument whose schema lists an enum, with a value that is not one of them."""
+    if not hint or "enum" not in hint:
         return False
-    return not (hint and "enum" in hint)
+    options = {str(e).lower() for e in hint["enum"]} if isinstance(hint["enum"], list) else set()
+    return value.strip().lower() not in options
 
 
 def _is_free_text(s: str) -> bool:
@@ -816,6 +870,8 @@ def _walk(x: Any, path: str, depth: int, out: list[tuple[str, Any]]) -> None:
 def _schema_hints(tools: list[dict[str, Any]], formats: bool = True) -> dict[str, dict[str, Any]]:
     hints: dict[str, dict[str, Any]] = {}
     for t in tools:
+        if not isinstance(t, dict):
+            continue
         fn = t.get("function", t)
         name = fn.get("name")
         params = fn.get("parameters") or fn.get("input_schema") or fn.get("inputSchema") or {}

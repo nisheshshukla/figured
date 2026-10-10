@@ -38,12 +38,16 @@ def test_periods_the_user_names() -> None:
     assert m.before_call("summarize", {"until": "2025-08-30"}).action == "warn"
 
 
-def test_digit_strings_match_amounts_written_with_separators() -> None:
+def test_bare_digit_amounts_in_user_text() -> None:
     m = RunMonitor()
-    m.user("Any transactions over KES 50,000?")
-    assert m.before_call("flag", {"threshold": "50000"}).action == "allow"
-    m.user("My zip is 19122.")
+    m.user("Please send 15000 to my savings, and a budget of 25000 for the trip.")
+    assert m.before_call("transfer", {"amount": 15000}).action == "allow"
+    assert m.before_call("budget", {"amount": 25000}).action == "allow"
+    m.user("My zip is 19122 and my order is 9502127.")
     assert m.before_call("refund", {"amount": 19122}).action == "warn"
+    assert m.before_call("refund", {"amount": 9502127}).action == "warn"
+    m.tool_result("account", {"balance": 12345.0})
+    assert m.before_call("close", {"account_number": "12345"}).action == "warn"
 
 
 def test_read_calls_may_choose_their_own_bounds() -> None:
@@ -65,8 +69,16 @@ def test_read_calls_may_choose_their_own_bounds() -> None:
     strict = RunMonitor(AgentPolicy(search_bounds="check"))
     assert strict.before_call("search_transactions", {"start_date": "2025-08-15"}).action == "warn"
     tools = [{"name": "transactions", "annotations": {"readOnlyHint": True}}]
-    hinted = RunMonitor(tools=tools)
-    assert hinted.before_call("transactions", {"start_date": "2025-08-15"}).action == "allow"
+    hinted = RunMonitor(tools=tools)  # a server's own annotation is not trusted
+    assert hinted.before_call("transactions", {"start_date": "2025-08-15"}).action == "warn"
+    listed = RunMonitor(AgentPolicy.build(read_tools=["transactions"]), tools=tools)
+    assert listed.before_call("transactions", {"start_date": "2025-08-15"}).action == "allow"
+    prefixed = RunMonitor()
+    assert (
+        prefixed.before_call("pubmed-mcp-server-search_pubmed", {"start_date": "2022-01-01"}).action
+        == "allow"
+    )
+    assert prefixed.before_call("getTransactions", {"start_date": "2022-01-01"}).action == "allow"
     assert RunMonitor().before_call("get_customer", {"dob": "1970-01-01"}).action == "warn"
 
 

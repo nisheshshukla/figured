@@ -11,6 +11,9 @@ from typing import Any, Literal
 Kind = Literal["identifier", "email", "url", "date", "number", "phrase"]
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+# anything shaped like an address, letters from any script: a lookalike with a Cyrillic letter in place
+# of a Latin one must be checked against the context like any other email, not skipped as non-ASCII
+_MAILBOX = re.compile(r"\S+@\S+\.\S+")
 URL = re.compile(r"https?://[^\s<>\"'`)\]}]+", re.IGNORECASE)
 _TOKEN = re.compile(r"#?[A-Za-z0-9][A-Za-z0-9_\-]*[A-Za-z0-9]|#?[A-Za-z0-9]")
 _MEASURE = re.compile(r"^\d+(?:\.\d+)?-[A-Za-z]+$|^\d+(?:\.\d+)?[A-Za-z]*(?:-\d+(?:\.\d+)?[A-Za-z]*)+$")
@@ -58,6 +61,8 @@ _DAY_OF_MONTH = re.compile(
     r"\bthe\s+(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(this|the|next|last)\s+month\b", re.IGNORECASE
 )
 _SLASH = re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?![\d/])")
+_YMD_SLASH = re.compile(r"(?<![\d/])(\d{4})/(\d{1,2})/(\d{1,2})(?![\d/])")
+_DMY_DOT = re.compile(r"(?<![\d.])(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\d|\.\d)")
 _MONTH_DAY = re.compile(_MONTH + r"\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?", re.IGNORECASE)
 _DAY_MONTH = re.compile(
     r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?" + _MONTH + r"\b\.?(?:,?\s+(\d{4}))?", re.IGNORECASE
@@ -131,7 +136,11 @@ def classify(value: Any, hint: dict[str, Any] | None = None) -> Kind | None:
     """The kind of a tool-argument leaf, or None when it is not something that needs a source."""
     if value is None or isinstance(value, bool):
         return None
-    if hint and "enum" in hint:
+    if (
+        hint
+        and isinstance(hint.get("enum"), list)
+        and str(value).strip().lower() in {str(e).lower() for e in hint["enum"]}
+    ):
         return None
     if isinstance(value, int | float):
         return "number"
@@ -141,7 +150,7 @@ def classify(value: Any, hint: dict[str, Any] | None = None) -> Kind | None:
     if not s:
         return None
     fmt = (hint or {}).get("format")
-    if fmt == "email" or EMAIL.fullmatch(s):
+    if fmt == "email" or ("@" in s and (EMAIL.fullmatch(s) or _MAILBOX.fullmatch(s))):
         return "email"
     if fmt in ("uri", "url") or URL.fullmatch(s):
         return "url"
@@ -188,7 +197,7 @@ def is_date_literal(s: str) -> bool:
     s = s.strip()
     if _ISO_DATETIME.match(s):
         return True
-    for rx in (_ISO, _SLASH, _MONTH_DAY, _DAY_MONTH):
+    for rx in (_ISO, _SLASH, _YMD_SLASH, _DMY_DOT, _MONTH_DAY, _DAY_MONTH):
         m = rx.match(s)
         if m and m.end() >= len(s.rstrip(".")) - 9:
             return bool(parse_dates(s))
@@ -223,6 +232,10 @@ def parse_dates(text: str, as_of: dt.date | None = None, *, intl: bool = True) -
         _add(out, int(m.group(1)), int(m.group(2)), int(m.group(3)))
     for m in _SHORT_ISO.finditer(text) if has_digit_dash else ():
         _add(out, 2000 + int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    for m in _YMD_SLASH.finditer(text) if has_slash else ():
+        _add(out, int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    for m in _DMY_DOT.finditer(text) if "." in text else ():
+        _add(out, int(m.group(3)), int(m.group(2)), int(m.group(1)))
     for m in _SLASH.finditer(text) if has_slash else ():
         a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         year = y + 2000 if y < 100 else y

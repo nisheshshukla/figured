@@ -1,0 +1,85 @@
+[
+  {
+    "label": "ToolScale deepseek-v4-pro",
+    "runs_ok": 112,
+    "calls_ok": 390,
+    "flagged_ok": 2,
+    "base_flagged_ok": 4,
+    "unknown_tool_ok": 0,
+    "writes_ok": 52,
+    "ambiguous_ok": 1,
+    "unconfirmed_ok": 4,
+    "corr_n": 310,
+    "corr_caught": 307,
+    "corr_base": 310,
+    "runs_fail": 172,
+    "calls_fail": 1102,
+    "flagged_fail": 62,
+    "base_flagged_fail": 113,
+    "unknown_tool_fail": 0,
+    "writes_fail": 99,
+    "ambiguous_fail": 47,
+    "unconfirmed_fail": 55,
+    "subs_n": 114,
+    "subs_caught": 0,
+    "subs_base": 0,
+    "seconds": 9.3,
+    "flags_on_successful_runs": 2,
+    "review": [
+      "deepseek-v4-pro:medicine:2444 add_patient_payment_method.payment_method.payment_method_id = 'PM-I8G-2'",
+      "deepseek-v4-pro:medicine:8540 create_prescription.expires_at = '2026-09-15'"
+    ],
+    "all_flags": [
+      "deepseek-v4-pro:medicine:2444 add_patient_payment_method.payment_method.payment_method_id = 'PM-I8G-2'",
+      "deepseek-v4-pro:medicine:8540 create_prescription.expires_at = '2026-09-15'"
+    ]
+  },
+  {
+    "label": "ToolScale Qwen-3.6-plus",
+    "runs_fail": 297,
+    "calls_fail": 1263,
+    "flagged_fail": 3,
+    "base_flagged_fail": 59,
+    "unknown_tool_fail": 0,
+    "runs_ok": 285,
+    "calls_ok": 1144,
+    "flagged_ok": 3,
+    "base_flagged_ok": 41,
+    "unknown_tool_ok": 0,
+    "corr_n": 774,
+    "corr_caught": 773,
+    "corr_base": 772,
+    "writes_fail": 47,
+    "ambiguous_fail": 0,
+    "unconfirmed_fail": 0,
+    "subs_n": 310,
+    "subs_caught": 1,
+    "subs_base": 0,
+    "writes_ok": 37,
+    "ambiguous_ok": 1,
+    "unconfirmed_ok": 1,
+    "seconds": 17.0,
+    "flags_on_successful_runs": 6,
+    "review": [
+      "Qwen-3.6-plus:bank:11338 search_transactions.max_amount = '17000'",
+      "Qwen-3.6-plus:bank:11338 search_transactions.min_amount = '16000'",
+      "Qwen-3.6-plus:basketball:13524 get_player_total_points.season = '2024-25'",
+      "Qwen-3.6-plus:basketball:17237 get_club_schedule.season = '2024-25'"
+    ],
+    "all_flags": [
+      "Qwen-3.6-plus:bank:11338 search_transactions.min_amount = '16000'",
+      "Qwen-3.6-plus:bank:11338 search_transactions.max_amount = '17000'",
+      "Qwen-3.6-plus:bank:11338 search_transactions.max_amount = '17000'",
+      "Qwen-3.6-plus:bank:11338 search_transactions.min_amount = '16000'",
+      "Qwen-3.6-plus:basketball:13524 get_player_total_points.season = '2024-25'",
+      "Qwen-3.6-plus:basketball:17237 get_club_schedule.season = '2024-25'"
+    ]
+  },
+  {
+    "speed": {
+      "calls": 3899,
+      "p50_us": 39.00006413459778,
+      "p99_us": 340.95789305865765
+    }
+  }
+]

@@ -58,7 +58,7 @@ def test_percentages_and_sums_of_money_fields() -> None:
     assert status([("user", "Add a 15% tip to the $80 bill.")], "pay", {"tip": 12.0}) == "sourced"
     assert status([("user", "Add a 15% tip to the $80 bill.")], "pay", {"total": 92.0}) == "sourced"
     quote = ("quote", {"price": 49.99, "tax": 4.12})
-    assert status([("tool", quote)], "charge", {"amount": 54.11}) == "sourced"
+    assert status([("tool", quote)], "charge", {"amount": 54.11}) == "unsourced"  # two different fields
     order = ("order", {"items": [{"price": 272.33}, {"price": 262.47}]})
     assert status([("tool", order)], "refund", {"amount": 534.8}) == "sourced"
     seats = ("search", {"price": 175, "available_seats": 4})
@@ -71,7 +71,9 @@ def test_counts_come_from_the_user_or_list_lengths() -> None:
     flight = ("search", {"flight": "HAT271", "price": 174, "available_seats": 5})
     assert status([("tool", flight)], "book", {"amount": 870}) == "unsourced"
     passengers = ("res", {"price": 174, "passengers": [{"n": "A"}, {"n": "B"}, {"n": "C"}]})
-    assert status([("tool", passengers)], "book", {"amount": 522}) == "sourced"
+    assert status([("tool", passengers)], "book", {"amount": 522}) == "unsourced"  # a list is not a count
+    stated = ("res", {"price": 174, "passengers": 3})
+    assert status([("tool", stated)], "book", {"amount": 522}) == "sourced"
 
 
 def test_number_words() -> None:

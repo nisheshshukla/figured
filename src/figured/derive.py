@@ -17,6 +17,8 @@ from figured.policy import Policy
 RANK = {
     "cell": 0,
     "column_sum": 1,
+    "column_mean": 1,
+    "share": 1,
     "row_sum": 2,
     "difference": 3,
     "sum": 3,
@@ -95,9 +97,14 @@ class Index:
         agg: list[tuple[float, str, str]] = []
         if "column_sum" in allowed:
             agg.extend(self._column_sums())
+        if "column_mean" in allowed:
+            agg.extend(self._column_means())
         agg.sort(key=lambda t: t[0])
         self.agg_keys = [a for a, _, _ in agg]
         self.agg_items = agg
+        self._shares_built = "share" not in allowed
+        self.share_keys: list[float] = []
+        self.share_items: list[tuple[float, int, int, int]] = []
         self._row_sums: list[tuple[float, int, int, int, int]] | None = None
         self._row_sum_keys: list[float] = []
 
@@ -154,6 +161,10 @@ class Index:
             m = self._best_sorted(self.agg_keys, lo, hi, score, self._agg_candidate)
             if m:
                 return m
+        if is_percent and self._share_index():
+            m = self._best_sorted(self.share_keys, lo, hi, score, self._share_candidate)
+            if m:
+                return m
         if "row_sum" in allowed:
             sums = self._row_sum_index()
             if sums:
@@ -208,6 +219,42 @@ class Index:
         signed = sum(rs.values[s + a : s + b + 1])
         head, tail = rs.columns[rs.col_of[s + a]], rs.columns[rs.col_of[s + b]]
         return Candidate(signed, "row_sum", f"{head}..{tail}[{rs.labels[r]}] summed = {fmt(signed)}")
+
+    def _share_candidate(self, i: int) -> Candidate:
+        pct, rs_index, k, r = self.share_items[i]
+        rs = self.ev.results[rs_index]
+        col = rs.columns[rs.col_of[k]]
+        return Candidate(pct, "share", f"{col}[{rs.labels[r]}] ÷ sum of {col} = {fmt(pct)}%")
+
+    def _column_means(self) -> list[tuple[float, str, str]]:
+        out: list[tuple[float, str, str]] = []
+        for rs in self.ev.results:
+            for c, (total, n) in enumerate(zip(rs.col_totals, rs.col_counts, strict=True)):
+                if n >= 2:
+                    mean = total / n
+                    out.append(
+                        (abs(mean), "column_mean", f"mean of {rs.columns[c]} over {n} rows = {fmt(mean)}")
+                    )
+        return out
+
+    def _share_index(self) -> list[float]:
+        """Each cell of the first max_rows rows as a percentage of its column total over all rows, what
+        "APAC was 19.5% of revenue" means. Built on the first percentage looked up, formatted on a match."""
+        if not self._shares_built:
+            out: list[tuple[float, int, int, int]] = []
+            for rs in self.ev.results:
+                vals, starts, col_of = rs.values, rs.row_start, rs.col_of
+                for r in range(min(self.policy.max_rows, len(starts) - 1)):
+                    for k in range(starts[r], starts[r + 1]):
+                        c = col_of[k]
+                        total, n = rs.col_totals[c], rs.col_counts[c]
+                        if n >= 2 and total:
+                            out.append((abs(vals[k] / total * 100), rs.index, k, r))
+            out.sort(key=lambda t: t[0])
+            self.share_items = out
+            self.share_keys = [t[0] for t in out]
+            self._shares_built = True
+        return self.share_keys
 
     def _column_sums(self) -> list[tuple[float, str, str]]:
         out: list[tuple[float, str, str]] = []

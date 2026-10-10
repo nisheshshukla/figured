@@ -146,7 +146,10 @@ def _result_set(
                 if not isfinite(v):
                     continue
             elif t is int:
-                v = float(v)
+                try:
+                    v = float(v)
+                except OverflowError:
+                    continue
             elif t is str:
                 s = v.strip()
                 if _NUMERIC_STRING.match(s):
@@ -186,7 +189,10 @@ def to_number(v: Any, parse_strings: bool = True) -> float | None:
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, int | float):
-        f = float(v)
+        try:
+            f = float(v)
+        except OverflowError:
+            return None
         return f if math.isfinite(f) else None
     if isinstance(v, Decimal):
         return float(v) if v.is_finite() else None

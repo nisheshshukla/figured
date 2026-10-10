@@ -8,7 +8,7 @@ ROWS = [{"state": "Utah", "income": 79243.4}, {"state": "Nevada", "income": 6830
 
 
 def test_report_shape_and_explanations() -> None:
-    r = trace("Utah's median is $79,243, about $10,940 above Nevada.", ROWS)
+    r = trace("Utah's median is $79,243, about $10,940 above Nevada.", ROWS, derivations="all")
     assert r.ok and r.checked == 2 and r.evidence_cells == 2
     kinds = {x.literal: x.match.kind for x in r.grounded if x.match}
     assert kinds == {"$79,243": "cell", "$10,940": "difference"}
@@ -31,7 +31,8 @@ def test_caveat_names_figures_and_counts_overflow() -> None:
 
 def test_derivations_can_be_restricted() -> None:
     text = "Utah is about $10,940 above Nevada."
-    assert trace(text, ROWS).ok
+    assert trace(text, ROWS, derivations="all").ok
+    assert trace(text, ROWS).ungrounded == ["$10,940"]  # pairwise arithmetic is opt-in
     r = trace(text, ROWS, derivations={"cell"})
     assert r.ungrounded == ["$10,940"]
 
@@ -77,6 +78,6 @@ def test_best_match_prefers_simplest_derivation() -> None:
 
 def test_ratio_kind_for_plain_fraction() -> None:
     rows = [{"a": 300.0, "b": 100.0}]
-    r = trace("The ratio is 3.0 to one, which is 300 units.", rows, ignore_below=0.0)
+    r = trace("The ratio is 3.0 to one, which is 300 units.", rows, ignore_below=0.0, derivations="all")
     kinds = [x.match.kind for x in r.grounded if x.match]
     assert kinds[0] == "ratio" and kinds[1] == "cell"

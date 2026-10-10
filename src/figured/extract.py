@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -27,7 +28,7 @@ _NUMBER = re.compile(
     (?P<sign>[-−]\s?)?
     (?P<currency>[$€£¥])?
     (?P<body>
-        \d+(?:\.\d+)?[eE][+-]?\d+
+        \d+(?:\.\d+)?[eE][+-]?\d{1,3}(?![0-9a-fA-F])
       | \d{1,3}(?:,\d{3})+(?:\.\d+)?
       | \d+(?:\.\d+)?
     )
@@ -38,12 +39,22 @@ _NUMBER = re.compile(
       | \s?(?P<word>percentage\ points|percent|pct|pp|thousand|million|billion|trillion
                     |mn|mm|bn|tn|k|m|b|t)\b(?![-'][A-Za-z])
     )?
-    (?![A-Za-z_])
+    (?:(?=(?:ml|mg|kg|km|cm|mm|gb|mb|kb|tb|oz|lbs?|ft|hrs?|mins?|secs?|ms|[glmhsx])\b)|(?![A-Za-z_]))
     """,
     re.VERBOSE | re.IGNORECASE,
 )
 _START = re.compile(r"(?:[-−]\s?)?[$€£¥]?\d")
 _RANGE_JOIN = re.compile(r"^\s*(?:to|and|or|-|–|—)\s*$", re.IGNORECASE)
+_BETWEEN = re.compile(r"\bbetween\s*$", re.IGNORECASE)
+
+
+def _joined(text: str, a_start: int, a_end: int, b_start: int) -> bool:
+    """Two figures form a range when joined by "to", a dash, or "or"; "and" only after "between",
+    since "1,000,000 people and 3,000,000 orders" is two figures, not a range."""
+    join = text[a_end:b_start]
+    if not _RANGE_JOIN.match(join):
+        return False
+    return join.strip().lower() != "and" or bool(_BETWEEN.search(text[max(0, a_start - 12) : a_start]))
 
 
 @dataclass(frozen=True)
@@ -94,6 +105,8 @@ def extract_numbers(text: str) -> list[Figure]:
         pos = m.end()
         body = m.group("body").replace(",", "")
         value = float(body)
+        if not math.isfinite(value):
+            continue
         word = (m.group("word") or "").lower()
         pct = bool(m.group("pct")) or word in PERCENT_WORDS
         scale = SCALES.get(word)
@@ -130,6 +143,8 @@ def scan_values(text: str) -> list[float]:
         pos = m.end()
         sign, body, pct, word = m.group("sign", "body", "pct", "word")
         v = float(body.replace(",", "") if "," in body else body)
+        if not math.isfinite(v):
+            continue
         scale: float | None = None
         if word:
             w = word.lower()
@@ -144,9 +159,9 @@ def scan_values(text: str) -> list[float]:
         vals.append(v)
         spans.append((m.start(), pos, scale, is_pct))
     for i in range(len(spans) - 1):
-        _, a_end, a_scale, a_pct = spans[i]
+        a_start, a_end, a_scale, a_pct = spans[i]
         b_start, _, b_scale, _ = spans[i + 1]
-        if b_scale and not a_scale and not a_pct and _RANGE_JOIN.match(text[a_end:b_start]):
+        if b_scale and not a_scale and not a_pct and _joined(text, a_start, a_end, b_start):
             vals[i] *= b_scale
     return vals
 
@@ -157,7 +172,7 @@ def _apply_ranges(text: str, figures: list[Figure]) -> list[Figure]:
     fixed = list(figures)
     for i in range(len(fixed) - 1):
         a, b = fixed[i], fixed[i + 1]
-        if not _RANGE_JOIN.match(text[a.end : b.start]):
+        if not _joined(text, a.start, a.end, b.start):
             continue
         if b.has_scale and not a.has_scale and not a.is_percent:
             a = Figure(a.literal, a.value * _scale_of(b), a.start, a.end, False, a.is_currency, True)

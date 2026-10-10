@@ -50,20 +50,20 @@ def test_derivations_without_cells() -> None:
 
 def test_zero_and_negative_cells_in_pairwise_search() -> None:
     rows = [{"a": 0.0, "b": 5000.0, "c": 10000.0}]
-    r = trace("Ratio of 2.0 to one.", rows, ignore_below=0.0)
+    r = trace("Ratio of 2.0 to one.", rows, ignore_below=0.0, derivations="all")
     assert r.grounded[0].match is not None and r.grounded[0].match.kind == "ratio"
     rows = [{"start": -200000.0, "end": -210000.0}]
-    r = trace("It fell 5% over the period.", rows)
+    r = trace("It fell 5% over the period.", rows, derivations="all")
     assert r.grounded[0].match is not None and r.grounded[0].match.kind == "percent_change"
     rows = [{"a": 0.0, "b": 0.0}]
-    assert trace("Grew 5% this year.", rows).ok
+    assert trace("Grew 5% this year.", rows, derivations="all", unmatched_percent="pass").ok
 
 
 def test_range_against_derived_values() -> None:
     rows = [{"state": "CA", "pop": 39346023}, {"state": "TX", "pop": 28635442}]
-    r = trace("Between 10 and 11 million more people.", rows)
+    r = trace("Between 10 and 11 million more people.", rows, derivations="all")
     assert r.ok and all(x.match is not None and x.match.kind == "difference" for x in r.grounded)
-    r = trace("Between 40% and 50% larger.", rows)
+    r = trace("Between 40% and 50% larger.", rows, derivations="all", unmatched_percent="pass")
     assert r.ok
 
 
@@ -86,7 +86,8 @@ def test_policy_close_with_zero() -> None:
 
 def test_index_can_be_reused_across_texts() -> None:
     ev = build_evidence([{"pop": 39346023}, {"pop": 28635442}])
-    ix = Index(ev, Policy())
-    assert ix.lookup(10.7e6, Policy()) is not None
-    assert ix.lookup(99e6, Policy()) is None
-    assert ix.lookup_range(10e6, 11e6, Policy()) is not None
+    pol = Policy().with_overrides(derivations="all")
+    ix = Index(ev, pol)
+    assert ix.lookup(10.7e6, pol) is not None
+    assert ix.lookup(99e6, pol) is None
+    assert ix.lookup_range(10e6, 11e6, pol) is not None

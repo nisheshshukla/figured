@@ -36,6 +36,9 @@
         "72.8%": "percent",
         "10.7 million": "difference"
       }
+    },
+    "policy": {
+      "derivations": "all"
     }
   },
   {
@@ -124,6 +127,9 @@
       "kinds": {
         "$10,900": "difference"
       }
+    },
+    "policy": {
+      "derivations": "all"
     }
   },
   {
@@ -186,6 +192,9 @@
       "kinds": {
         "2.3%": "percent_change"
       }
+    },
+    "policy": {
+      "derivations": "all"
     }
   },
   {
@@ -206,16 +215,13 @@
     }
   },
   {
-    "name": "unmatched percent is flagged under a strict policy",
+    "name": "unmatched percent is flagged by default",
     "text": "About 12% of residents are children.",
     "rows": [
       {
         "pop": 1000000
       }
     ],
-    "policy": {
-      "unmatched_percent": "flag"
-    },
     "expect": {
       "ok": false,
       "ungrounded": [
@@ -224,7 +230,7 @@
     }
   },
   {
-    "name": "unmatched percent passes by default",
+    "name": "unmatched percent passes when the policy allows it",
     "text": "About 12% of residents are children.",
     "rows": [
       {
@@ -234,6 +240,9 @@
     "expect": {
       "ok": true,
       "ungrounded": []
+    },
+    "policy": {
+      "unmatched_percent": "pass"
     }
   },
   {
@@ -251,6 +260,9 @@
       "kinds": {
         "3.2 million": "difference"
       }
+    },
+    "policy": {
+      "derivations": "all"
     }
   },
   {
@@ -301,6 +313,9 @@
     "expect": {
       "ok": true,
       "ungrounded": []
+    },
+    "policy": {
+      "derivations": "all"
     }
   },
   {
@@ -379,6 +394,9 @@
       "kinds": {
         "$55": "ratio"
       }
+    },
+    "policy": {
+      "derivations": "all"
     }
   }
 ]

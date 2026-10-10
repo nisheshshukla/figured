@@ -28,12 +28,16 @@ def trace(
     Policy options can be passed as keywords: trace(text, rows, rel_tolerance=0.01).
     """
     pol = (policy or Policy()).with_overrides(**overrides)
+    if isinstance(text, bytes | bytearray):
+        text = bytes(text).decode("utf-8", errors="replace")
+    elif not isinstance(text, str):
+        text = "" if text is None else str(text)
     ev = build_evidence(rows, results, parse_strings=pol.parse_strings)
     figures = extract_numbers(text)
     if ev.empty:
         return Report(text, [_without_evidence(f, pol) for f in figures], 0)
     index = Index(ev, pol)
-    return Report(text, [_check(f, index, pol) for f in figures], ev.size)
+    return Report(text, [_check(f, index, pol) for f in figures], ev.size, _index=index, _policy=pol)
 
 
 def _without_evidence(fig: Figure, pol: Policy) -> Result:

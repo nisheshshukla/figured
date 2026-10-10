@@ -1,0 +1,40 @@
+
+== AgentDojo gpt-4o-2024-05-13
+   rules  injection succeeded                            300  flagged  87.3%  blocked  85.7%
+   rules  injection attempted, did not succeed           329  flagged  24.3%  blocked  17.0%
+   rules  benign runs that completed the user's task      90  flagged  24.4%  blocked  18.9%
+   plain  injection succeeded                            300  flagged  21.7%  blocked   0.0%
+   plain  injection attempted, did not succeed           329  flagged  10.0%  blocked   0.0%
+   plain  benign runs that completed the user's task      90  flagged   7.8%  blocked   0.0%
+
+== AgentDojo gpt-4o-mini-2024-07-18
+   rules  injection succeeded                            171  flagged  84.8%  blocked  81.3%
+   rules  injection attempted, did not succeed           458  flagged  31.9%  blocked  25.5%
+   rules  benign runs that completed the user's task      90  flagged  22.2%  blocked  13.3%
+   plain  injection succeeded                            171  flagged  25.7%  blocked   0.0%
+   plain  injection attempted, did not succeed           458  flagged  15.9%  blocked   0.0%
+   plain  benign runs that completed the user's task      90  flagged  12.2%  blocked   0.0%
+
+== AgentDojo claude-3-5-sonnet-20241022
+   rules  injection succeeded                              7  flagged  71.4%  blocked  71.4%
+   rules  injection attempted, did not succeed           622  flagged  17.8%  blocked  12.9%
+   rules  benign runs that completed the user's task      94  flagged  19.1%  blocked  14.9%
+   plain  injection succeeded                              7  flagged   0.0%  blocked   0.0%
+   plain  injection attempted, did not succeed           622  flagged   7.1%  blocked   0.0%
+   plain  benign runs that completed the user's task      94  flagged   5.3%  blocked   0.0%
+
+== AgentDojo gemini-2.0-flash-001
+   rules  injection succeeded                            134  flagged  86.6%  blocked  79.9%
+   rules  injection attempted, did not succeed           815  flagged  12.8%  blocked   8.8%
+   rules  benign runs that completed the user's task      56  flagged  25.0%  blocked  19.6%
+   plain  injection succeeded                            134  flagged  32.1%  blocked   0.0%
+   plain  injection attempted, did not succeed           815  flagged   6.7%  blocked   0.0%
+   plain  benign runs that completed the user's task      56  flagged   7.1%  blocked   0.0%
+
+== AgentDojo meta-llama_Llama-3.3-70B-Instruct
+   rules  injection succeeded                            219  flagged  84.5%  blocked  76.7%
+   rules  injection attempted, did not succeed           730  flagged  21.4%  blocked  17.9%
+   rules  benign runs that completed the user's task      78  flagged  26.9%  blocked  14.1%
+   plain  injection succeeded                            219  flagged  38.4%  blocked   0.0%
+   plain  injection attempted, did not succeed           730  flagged   9.9%  blocked   0.0%
+   plain  benign runs that completed the user's task      78  flagged  15.4%  blocked   0.0%

@@ -35,3 +35,7 @@ The scope figured can claim is agents that act on records: orders, accounts, pay
 - **A number written with its unit** ("250ml", "175g") is not read as a number.
 - **Read tools named with a server prefix** (`pubmed-mcp-server-search_pubmed_advanced`) do not match the `search_*` pattern, so their bounds are checked.
 - **Substitutions were "caught"** 24% of the time, because the substitute was drawn from tool declarations in the system prompt, which figured does not treat as data. This says more about the procedure than about figured.
+
+## After 0.4.2
+
+0.4.2 fixed the three bugs above and changed nothing about the result: 41.2% of good Toucan runs flagged, against 40.6% for the baseline. The flags are values the agent is meant to choose. The scope statement stands.

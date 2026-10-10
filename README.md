@@ -7,7 +7,7 @@
 | Check | Runs on | Catches | Typical cost |
 |---|---|---|---|
 | `trace(answer, rows)` | a generated answer and the rows it was written from | figures that are not in the data and cannot be derived from it | about 150 µs |
-| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts absent from the conversation and earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 25 µs per tool call (p99 0.19 ms) |
+| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts absent from the conversation and earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 35 µs per tool call (p99 0.23 ms) |
 
 Zero dependencies. No model calls. Python 3.10+.
 
@@ -39,8 +39,8 @@ rows = [
     {"region": "APAC", "revenue": 1_930_000, "orders": 35_100},
 ]
 answer = (
-    "North America brought in $4.82M, about 53% more than Europe, and the three regions "
-    "combined reached $9.9M on 144,300 orders. Average order value in APAC was $71."
+    "North America brought in $4.82M, about 48.7% of the total, and the three regions combined "
+    "reached $9.9M on 144,300 orders, an average of $3.3M per region. Average order value in APAC was $71."
 )
 
 report = trace(answer, rows)
@@ -50,15 +50,18 @@ print(report.explain())
 ```
 
 ```
-UNGROUNDED · 5 checked · 1 untraceable
+UNGROUNDED · 6 checked · 1 untraceable · coincidence 10%
   ✓ $4.82M           cell           revenue[North America] = 4,820,000
-  ✓ 53%              percent_change (revenue[North America] − revenue[Europe]) ÷ revenue[Europe] = 53.02%
+  ✓ 48.7%            share          revenue[North America] ÷ sum of revenue = 48.69%
   ✓ $9.9M            column_sum     sum of revenue over 3 rows = 9,900,000
   ✓ 144,300          column_sum     sum of orders over 3 rows = 144,300
+  ✓ $3.3M            column_mean    mean of revenue over 3 rows = 3,300,000
   ✗ $71              no cell, sum, difference, or ratio within tolerance
 ```
 
 APAC's real average order value is $55. The model wrote a fluent sentence with a number that is not in the data and cannot be derived from it, and the other four figures are fine. That is the failure this library exists for.
+
+The `coincidence` figure says how much a green result means: the share of random figures, drawn between the smallest and largest cell, that this table would also have called grounded. 10% here. On a 12-row, 5-column table it is about 70% at the default tolerance, which is why `trace` is a check for small result sets, and why it tells you the number instead of hoping you will not ask. Pairwise arithmetic (differences, ratios, percentage changes) is off by default since 0.4.2; `derivations="all"` turns it on, and on a 12×5 table it pushes coincidence to 99%.
 
 ## Values in agent actions
 
@@ -118,10 +121,10 @@ Arguments are checked strictly, because they are acted on. Values in the agent's
 
 | Kind | Found when | Not found |
 |---|---|---|
-| identifier | the same characters appear, ignoring case and separators (`ORD 88213` → `ORD-88213`, `(415) 555-0132` → `+14155550132`, IBANs with or without spaces); a prefix the tool's schema states is added to digits found in context (`9502127` → `#W9502127` when the description says "such as '#W0000000'", or a `pattern` says `^#W\d{7}$`) | a digit run inside another identifier; a prefix added to digits nobody typed, or to the wrong number of them (`credit_card_7334` from "ending in 7334") |
+| identifier | the same characters appear, ignoring case and separators (`ORD 88213` → `ORD-88213`, `(415) 555-0132` → `+14155550132`, IBANs with or without spaces); a prefix the tool's schema states is added to digits the user typed (`9502127` → `#W9502127` when the description says "such as '#W0000000'", or a `pattern` says `^#W\d{7}$`), or dropped from an ID seen in a result | a digit run inside another identifier; a prefix added to digits from a tool result or to the wrong number of them (`credit_card_7334` from "ending in 7334"); a different country code |
 | email, URL | the address appears, ignoring case; a URL may differ in scheme or `www.` | another host that ends the same way (`evil-example.com` is not `example.com`) |
 | date | the calendar date appears in any format, including ISO timestamps (`2025-08-02T23:59:59Z`), `YY-MM-DD` in tool results, Spanish, French, German, Portuguese, Italian, and Chinese or Japanese dates; "tomorrow", weekdays, and "end of the month" resolve against the system prompt's date; a date without a year takes the year nearest that date; the first or last day of a period the user names, or the day after ("August" → 08-01, 08-31, 09-01; "in 2024"; "last month"), as search tools take them; a shift the user asked for, in the direction they asked ("a day later", "two weeks earlier") | a shift in the other direction; a shift applied to a birth date or any date years from now |
-| amount | the number appears, to the cent and with its sign; or it is a sourced amount times a count the user stated or a list's length (passengers, items), a stated percentage of an amount (a tip, a tax), or two money fields of one small source added (two item prices, a price and its tax); English number words count ("two hundred fifty") | a multiple by a count nobody stated; a sum over a search result with dozens of fares, where some pair matches almost anything |
+| amount | the number appears, to the cent and with its sign; or it is a sourced amount times or divided by a count the user stated or a tool reported (`passengers: 3`), a percentage the user stated of an amount (a tip), or two values of the same money field in one list added (two item prices); English number words count ("two hundred fifty"); a bare run of digits after a money word ("send 15000") | a multiple by a count nobody stated or by a list's length; two different fields added (a fee plus a tax); a percentage that appears only in a tool result; a sum over a search result with dozens of fares |
 | phrase | a short string with digits (an address line) appears, or every number and word in it does, with each number beside words in its source | a house number borrowed from a price |
 
 Nothing laundered counts as a source: a total in the agent's own message counts only if every operand was found, the output of a pure tool such as a calculator does not vouch for made-up inputs, an error that echoes a made-up ID back does not vouch for it, and a value the system prompt gives as an example ("IDs look like #W0000000") is not data.
@@ -220,7 +223,7 @@ The check that matters for latency is `before_call`, which sits between the mode
 
 | Session | `before_call` p50 | p99 |
 |---|---|---|
-| tau-bench runs (14,285 calls), with tool schemas | 26 µs | 0.19 ms |
+| tau-bench runs (14,285 calls), with tool schemas | 35 µs | 0.23 ms |
 | 10 tool results, 20 KB seen | 0.04 ms | 0.12 ms |
 | 200 tool results, 400 KB seen | 0.23 ms | 0.43 ms |
 | 20 tool results, 2 MB seen | 0.49 ms | 1.1 ms |
@@ -252,6 +255,8 @@ report.ok, report.unsourced, report.findings, report.to_dict()
 - Corruptions caught: 95.3%.
 
 So the scope is records, not open-ended tools. The numbers below are for agents of that kind.
+
+**0.4.2** then went through two independent adversarial reviews ([one](docs/review-0.4.1.md) with code access, [one](docs/review-0.4.2-fresh.md) without), fixed what they found, and was re-measured on everything above with the same harnesses (`benchmarks/results/v0.4.2/`): tau2 airline 2.1% and retail 0.7% of good runs flagged (baseline 23.7% and 12.1%), ToolScale 1.3%, AgentDojo 85.8% of successful injections flagged across five models, Toucan unchanged at 41%. On the fresh reviewer's 60 probes it allowed 30 of 30 correct calls and flagged 29 of 30 bad ones; the substring check managed 10 and 22.
 
 
 Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics, and is replayed with its tools' schemas, as an agent would be given them. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).
@@ -285,6 +290,8 @@ Rules catch four in five successful injections, and also flag one in four legiti
 
 Every substantive number in the text must be within a tolerance (default 1.5 percent) of something the rows could legitimately produce:
 
+Default derivations are cells, column sums and means, a cell's share of its column total (for percentages), and adjacent-cell row sums. The pairwise kinds below need `derivations="all"`.
+
 | Derivation | Example | Explanation you get back |
 |---|---|---|
 | cell | "$4,820,000 in revenue" | `revenue[North America] = 4,820,000` |
@@ -296,7 +303,7 @@ Every substantive number in the text must be within a tolerance (default 1.5 per
 | percent | "Europe is 65% of North America" | `revenue[Europe] ÷ revenue[North America] = 65.35%` |
 | percent change | "grew 53%" | `(revenue[North America] − revenue[Europe]) ÷ revenue[Europe] = 53.02%` |
 
-Sums, differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between $9 and $10 million" is grounded when a candidate lies inside it. Plain numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 regions in 2024" is not a claim about the data; a figure with a currency symbol or a percent sign is always checked.
+With `derivations="all"`, sums, differences, ratios, and percentages are searched within a row and across rows. A stated range such as "between $9 and $10 million" is grounded when a candidate lies inside it. Plain numbers at or below 100 and bare four-digit years are ignored by default, because "top 5 regions in 2024" is not a claim about the data; a figure with a currency symbol or a percent sign is always checked.
 
 Two rules keep the search honest. A figure written as a percentage is searched as `a ÷ b × 100`, and a plain figure as `a ÷ b`, never both, so "150" cannot pass by coincidentally matching a 150% share. And the pairwise and adjacent-cell derivations cover the first `max_rows` rows (12 by default), which is the part of a result a model has usually read; cells and column sums cover every row. Raise `max_rows` if your prompt includes more.
 
@@ -338,9 +345,9 @@ trace(answer, rows, ignore_below=0, ignore_years=False)
 | `abs_tolerance` | 0 | absolute error allowed in addition |
 | `ignore_below` | 100 | plain figures at or below this are counts of things, not claims; currency and percent figures are always checked |
 | `ignore_years` | True | bare four-digit integers in `year_range` are skipped |
-| `unmatched_percent` | "pass" | shares of totals outside the rows are common, so a lone percentage passes |
+| `unmatched_percent` | "flag" | "pass" lets a percentage that matches nothing through, for answers quoting shares of totals outside the rows |
 | `max_rows`, `max_cells` | 12, 40 | how much of the result feeds the pairwise and adjacent-sum search |
-| `derivations` | all eight | which candidate kinds are generated |
+| `derivations` | cell, column_sum, column_mean, share, row_sum | which candidate kinds are generated; `"all"` adds difference, sum, ratio, percent, percent_change |
 | `parse_strings` | True | coerce numeric strings in the rows |
 
 ### Speed
@@ -349,10 +356,10 @@ Measured with `python benchmarks/bench.py` on a laptop, one answer with nine fig
 
 | Result set | Time per check |
 |---|---|
-| 2 rows × 3 columns | 150 µs |
-| 12 rows × 5 columns | 360 µs |
-| 200 rows × 10 columns | 1.1 ms |
-| 2,000 rows × 10 columns | 9 ms |
+| 2 rows × 3 columns | 93 µs |
+| 12 rows × 5 columns | 170 µs |
+| 200 rows × 10 columns | 1.0 ms |
+| 2,000 rows × 10 columns | 9.3 ms |
 
 Nothing is enumerated up front. Cells and column sums are indexed once; differences, ratios, percentages, and percent changes are found per figure by solving for the partner cell and bisecting for it. Explanations are formatted only for the figure that matched. For comparison, a model-based faithfulness judge takes seconds and costs a request.
 
@@ -361,7 +368,7 @@ Nothing is enumerated up front. Cells and column sums are indexed once; differen
 ```bash
 figured "Revenue reached $4.82M in North America." --rows rows.json
 figured - --rows rows.json < answer.txt
-figured "..." --rows rows.json --json --tolerance 0.01 --strict-percent
+figured "..." --rows rows.json --json --tolerance 0.01 --derivations all --allow-unmatched-percent
 ```
 
 Exit code 1 when any figure is untraceable, so it can gate a pipeline step.
@@ -416,7 +423,8 @@ Each call is one model request over the question, up to 30 rows per result set, 
 ## What it does not do
 
 - It cannot catch a correct number attached to the wrong claim. That is what the judge extra is for.
-- With large result sets the derived set is big, and a hallucinated figure can land within tolerance of some difference by coincidence. The defaults cap the pairwise search at 12 rows and 40 cells; tighten the tolerance or restrict `derivations` for sensitive uses. A flag on a correct figure is treated as the worse error, because people stop reading badges that cry wolf.
+- Tolerance matching over many cells accepts many wrong figures by coincidence: about 70% of random figures on a 12×5 table at the default 1.5%, 99% with pairwise arithmetic on, 10% on the three-row example. `Report.coincidence()` gives the number for your table; read it before trusting a green result, and tighten `rel_tolerance` or the derivations for larger tables.
+- Sign is ignored: "-$97,150" traces to a cell of 97,150.
 - In answers, numbers written as words ("two million") are not extracted. Agent checks read English number words in what the user says.
 - It does not know what the rows mean. If the agent queried the wrong column and described it faithfully, every figure traces.
 - For agents, a wrong value that also exists in the context passes: the wrong one of two real order IDs, a flight date put in a birth date field, a recipient copied from an injected email when no source rule covers that argument. Provenance proves a value came from somewhere in the context, not that it was the right one. On the benchmarks above this is most real agent failure.
@@ -433,7 +441,7 @@ Each call is one model request over the question, up to 30 rows per result set, 
 
 | | rows as evidence | derived arithmetic | deterministic | names each figure | packaged |
 |---|---|---|---|---|---|
-| **figured** | yes | sums, differences, ratios, percentages, ranges | yes | yes, with the derivation | pip, zero deps |
+| **figured** | yes | sums, means, shares, ranges; differences, ratios and percentages opt-in; reports its own coincidence rate | yes | yes, with the derivation | pip, zero deps |
 | llmground | no, a source string | no | yes | yes | pip |
 | @demystify/grounding | no, cited facts | no | yes | yes | npm |
 | pcn-core (Proof-Carrying Numbers) | claim values you supply | no | yes | yes, needs model-emitted tags | pip |

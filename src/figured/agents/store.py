@@ -35,19 +35,22 @@ _WS = re.compile(r"\s+")
 _NUM_WORDS = {
     "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "both": 2, "pair": 2, "couple": 2, "dozen": 12,
 }  # fmt: skip
 _N = r"(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
 _LATER = r"later|after|ahead|forward|out"
 _EARLIER = r"earlier|before|sooner|prior"
 _SHIFT_PHRASES = (
-    (re.compile(r"\b(?:next|following) day\b|\bday after\b", re.IGNORECASE), 1, 1),
+    (re.compile(r"\b(?:next|following) day\b|\bday after\b(?! tomorrow)", re.IGNORECASE), 1, 1),
     (re.compile(r"\b(?:previous|prior) day\b|\bday before\b", re.IGNORECASE), 1, -1),
     (re.compile(r"\bnext week\b", re.IGNORECASE), 7, 1),
     (re.compile(r"\b(?:last|previous) week\b", re.IGNORECASE), 7, -1),
 )
 _SHIFT_N = re.compile(_N + r" (day|week)s? (" + _LATER + "|" + _EARLIER + r"|back)\b", re.IGNORECASE)
 _SHIFT_BY = re.compile(r"\b(?:by|in) " + _N + r" (day|week)s?\b", re.IGNORECASE)
-_COUNT_WORDS = re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b", re.IGNORECASE)
+_COUNT_WORDS = re.compile(
+    r"\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|both|pair|couple|dozen)\b", re.IGNORECASE
+)
 _PREFIXED = re.compile(r"^(#?[a-z]{0,2}[-#]?)(\d+)$")
 _PHRASE_PARTS = re.compile(r"[a-z0-9][a-z0-9_\-]*")
 _PHRASE_SKIP = frozenset(
@@ -57,7 +60,7 @@ _PHRASE_SKIP = frozenset(
         "building", "bldg", "north", "south", "east", "west", "the", "and",
     }
 )  # fmt: skip
-_PAIR_DERIVATIONS = frozenset(DERIVATIONS) - {"cell", "column_sum", "row_sum"}
+_PAIR_DERIVATIONS = frozenset(DERIVATIONS) - {"cell", "column_sum", "column_mean", "share", "row_sum"}
 _BUCKET = math.log1p(0.001)
 STRICT_TOLERANCE = 0.001
 STRICT_ABS = 0.005
@@ -66,10 +69,21 @@ SHIFT_HORIZON_DAYS = 730
 _PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s?(?:%|percent\b|per cent\b)", re.IGNORECASE)
 _EXAMPLE_CUES = ("e.g.", "for example", "for instance", "such as", "like", "in the form")
 _EXAMPLE_VALUE = re.compile(r"[\s:,(\"'`]*(#?[\w@.+\-/]*\d[\w@.+\-/]*|[\w.+\-]+@[\w.\-]+)")
-_SEPARATORS = r"[\s\-./()]{0,3}"
-_SQUEEZE = (" ", "\t", "\n", "\r", "-", ".", "/", "(", ")")
+_SEPARATORS = r"[\s\-._/()]{0,3}"
+_SQUEEZE = (" ", "\t", "\n", "\r", "-", ".", "_", "/", "(", ")")
 _MONEY_KEY = re.compile(
     r"price|amount|total|cost|fee|tax|balance|fare|charge|subtotal|refund|payment|paid|rent|bill|tip|discount",
+    re.IGNORECASE,
+)
+_COUNT_KEY = re.compile(
+    r"^(?:quantity|qty|count|seats|passengers|guests|tickets|nights|rooms|adults|children|items|units|"
+    r"num(?:ber)?(?:_of)?_?\w*)$",
+    re.IGNORECASE,
+)
+_MONEY_DIGITS = re.compile(
+    r"\b(?:send|sent|pay|paid|transfer|transferred|refund|charge|charged|deposit|withdraw|wire|move|"
+    r"amount|total|price|cost|fee|budget|limit|balance|usd|eur|gbp)\b(?:\s+(?:me|them|him|her|us|of|is|was|"
+    r"about|around|roughly|the|another|an?))*\s+\$?(\d{5,})(?![\d,.]\d|\w)",
     re.IGNORECASE,
 )
 _CURRENCY = re.compile(r"[$€£¥]\s?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)")
@@ -95,7 +109,7 @@ class Source:
     dates: set[DateKey] | None = None
     tainted: bool = False
     echoes: frozenset[str] = frozenset()
-    money: list[float] = field(default_factory=list)
+    money: list[list[float]] = field(default_factory=list)
     squeezed: str = ""
     named: str = ""
     _records: dict[str, set[str]] | None = field(default=None, repr=False)
@@ -185,18 +199,21 @@ class SourceStore:
             src.numbers, lengths, src.money = _numbers_in(head) if head else ([], [], [])
             if kind in ("user", "tool"):
                 self.counts |= {n for n in lengths if 2 <= n <= MAX_COUNT}
+            if kind == "user":
+                src.numbers += _money_digits(head)
             if kind in ("user", "system"):
                 src.numbers += number_words(head)
-        if "%" in head or "percent" in head or "per cent" in head:
+        if kind in ("user", "system") and ("%" in head or "percent" in head or "per cent" in head):
             self.rates |= {
                 float(m.group(1)) / 100 for m in _PERCENT.finditer(head) if 0 < float(m.group(1)) < 100
             }
         if kind == "user":
             self.counts |= {int(v) for v in src.numbers if v.is_integer() and 2 <= v <= MAX_COUNT}
+        src.numbers = [v for v in src.numbers if math.isfinite(v)]
         if echo:
             echoed = {f for e in echo for f in scan_values(e)}
             src.numbers = [v for v in src.numbers if v not in echoed]
-            src.money = [v for v in src.money if v not in echoed]
+            src.money = [[v for v in g if v not in echoed] for g in src.money]
         for pos, v in enumerate(src.numbers):
             entry = (i, pos, v)
             a = abs(v)
@@ -228,29 +245,26 @@ class SourceStore:
         strict: bool = False,
         shift_ok: bool = True,
         formats: list[tuple[str, int, str]] | None = None,
+        period_ok: bool = False,
     ) -> Hit | None:
         """Most recent untainted source that can account for `value`, limited to `allowed` kinds."""
         if kind == "number":
             number = float(value)  # type: ignore[arg-type]
             return self._find_number(number, allowed, strict) if math.isfinite(number) else None
         if kind == "date":
-            return self._find_date(str(value), allowed, shift_ok)
+            return self._find_date(str(value), allowed, shift_ok, period_ok)
         text = norm(str(value))
         if kind == "phrase":
             i = self._search(text, allowed, collapsed=True)
             if i >= 0:
                 return Hit(self.sources[i], "exact")
-            return self._composed_phrase(text, allowed)
+            return self._composed_phrase(text, allowed) if allowed is None else None
         best = max(self._search(v, allowed, tails=not strict) for v in _variants(kind, text))
         if best >= 0:
             return Hit(self.sources[best], "exact")
         if kind == "url":
             return self._url(text, allowed)
         if kind == "identifier":
-            if text.isdigit() and len(text) >= 5:
-                amount = self._find_strict(float(text), allowed)
-                if amount is not None and amount.how == "exact":
-                    return amount
             return (
                 (self._formatted(text, formats, allowed) if formats else None)
                 or self._separated(text, allowed)
@@ -364,21 +378,24 @@ class SourceStore:
     def _formatted(
         self, text: str, formats: list[tuple[str, int, str]], allowed: set[str] | None
     ) -> Hit | None:
-        """An ID in the format a tool's schema states, around digits found in context: "#W9502127" for
+        """An ID in the format a tool's schema states, around digits the user typed: "#W9502127" for
         the 9502127 the user typed, when the schema says "such as '#W0000000'". Only the literal
-        prefix and suffix are added; the digits must be a whole token in context and the count must
-        match, so "credit_card_7334" from "ending in 7334" still fails a seven-digit format."""
+        prefix and suffix are added; the digits must be a whole token in the user's own words and the
+        count must match, so "credit_card_7334" from "ending in 7334" fails a seven-digit format, and
+        a tracking number from a tool result cannot be dressed up as an order ID."""
         for prefix, n, suffix in formats:
             p, s = prefix.lower(), suffix.lower()
             if len(text) == len(p) + n + len(s) and text.startswith(p) and text.endswith(s):
-                core, wrapped = text[len(p) : len(text) - len(s)], ""
+                # the prefix was added: the bare digits must be the user's own
+                core = text[len(p) : len(text) - len(s)]
+                if not core.isdigit():
+                    continue
+                i = self._search(core, {"user"} if allowed is None else {"user"} & allowed)
             elif text.isdigit() and len(text) == n:
-                core, wrapped = p + text + s, text
+                # the prefix was dropped: the full ID must appear as such
+                i = self._search(p + text + s, allowed)
             else:
                 continue
-            if not (wrapped or core.isdigit()):
-                continue
-            i = self._search(core, allowed)
             if i >= 0:
                 why = f"the {prefix}{'#' * n}{suffix} format from the tool's schema"
                 return Hit(self.sources[i], "normalized", why)
@@ -395,11 +412,14 @@ class SourceStore:
         if text.startswith("+") and core.isdigit():
             cores += [core[k:] for k in (1, 2, 3) if len(core) - k >= 9]
         for c in cores:
-            pattern = r"(?<![a-z0-9])" + _SEPARATORS.join(map(re.escape, c)) + r"(?![a-z0-9])"
+            pattern = r"(?<![a-z0-9_])" + _SEPARATORS.join(map(re.escape, c)) + r"(?![a-z0-9_])"
             i = self._matching(pattern, allowed, text, c, squeezed=True)
             if i >= 0:
                 how = "the same characters with different separators"
                 if c != core:
+                    code = core[: len(core) - len(c)]
+                    if not _same_country(self.sources[i].low, c, code):
+                        continue
                     how = "the same number without its country code"
                 return Hit(self.sources[i], "normalized", how)
         return None
@@ -469,9 +489,12 @@ class SourceStore:
             return (sy is None or y is None or sy == y), "date"
         if self.as_of is None:
             return True, "date (year inferred)"
-        return y == _nearest_year(self.as_of, m, d), "date (year inferred from the reference date)"
+        ok = y in (_nearest_year(self.as_of, m, d), self.as_of.year)
+        return ok, "date (year inferred from the reference date)"
 
-    def _find_date(self, value: str, allowed: set[str] | None, shift_ok: bool) -> Hit | None:
+    def _find_date(
+        self, value: str, allowed: set[str] | None, shift_ok: bool, period_ok: bool = False
+    ) -> Hit | None:
         keys = parse_dates(value)
         if not keys:
             return None
@@ -485,7 +508,7 @@ class SourceStore:
                     best = (i, how)
         if best is not None:
             return Hit(self.sources[best[0]], best[1])
-        for y, m, d in keys:
+        for y, m, d in keys if period_ok else ():
             for i, sy in reversed(self._period_index.get((m, d), ())):
                 ok, _ = self._year_ok(y, sy, m, d)
                 if ok and (allowed is None or _allowed(self.sources[i], allowed)):
@@ -593,7 +616,7 @@ class SourceStore:
         best: tuple[tuple[int, int, float], str] | None = None
         factors = [
             (float(k), f"× {k}, a count stated in the conversation", "count") for k in sorted(self.counts)
-        ]
+        ] + [(1 / k, f"÷ {k}, a count stated in the conversation", "count") for k in sorted(self.counts)]
         for r in sorted(self.rates):
             pct = f"{r * 100:g}%"
             factors += [(r, f"× {pct}, a stated percentage", "percent")]
@@ -608,27 +631,25 @@ class SourceStore:
         return self._same_source_sum(value, rel, allowed)
 
     def _same_source_sum(self, value: float, rel: float, allowed: set[str] | None) -> Hit | None:
-        """`value` is two money fields of one source added: the prices of two items of one order, a
-        price and its tax. Fields are money by name (price, total, fee, tax...) or by a currency sign. Only
-        sources with a few such fields count: among a search result's sixty fares, some pair adds up to
-        almost any amount."""
+        """`value` is two amounts of one money group added: the prices of two items of one order."""
         tol = rel * abs(value)
         for i in range(len(self.sources) - 1, -1, -1):
             src = self.sources[i]
             if src.tainted or (allowed is not None and not _allowed(src, allowed)):
                 continue
-            if len(src.money) > SUM_FIELDS:
-                continue
-            nums = sorted(src.money)
-            lo, hi = 0, len(nums) - 1
-            while lo < hi:
-                total = nums[lo] + nums[hi]
-                if abs(total - value) <= tol:
-                    return Hit(src, "derived:sum", f"{nums[lo]:g} + {nums[hi]:g} from the same source")
-                if total < value:
-                    lo += 1
-                else:
-                    hi -= 1
+            for group in src.money:
+                if len(group) > SUM_FIELDS:
+                    continue
+                nums = sorted(group)
+                lo, hi = 0, len(nums) - 1
+                while lo < hi:
+                    total = nums[lo] + nums[hi]
+                    if abs(total - value) <= tol:
+                        return Hit(src, "derived:sum", f"{nums[lo]:g} + {nums[hi]:g} from the same source")
+                    if total < value:
+                        lo += 1
+                    else:
+                        hi -= 1
         return None
 
     def _pair_index(self, allowed: set[str] | None) -> Index | None:
@@ -650,6 +671,14 @@ class SourceStore:
         if allowed is None:
             self._pair_cache = (self._count, index)
         return index
+
+
+def _same_country(low: str, national: str, code: str) -> bool:
+    """The source writes the national number either without a country code, or with the same one. A
+    +44 number is not the user's +1 number with the digits rearranged."""
+    pattern = r"\+\s?(\d{1,3})[\s\-.()]*" + _SEPARATORS.join(map(re.escape, national))
+    found = re.search(pattern, low)
+    return found is None or found.group(1) == code
 
 
 def _nearest_year(as_of: dt.date, m: int, d: int) -> int | None:
@@ -700,6 +729,8 @@ def _variants(kind: str, text: str) -> list[str]:
     out = [text]
     if kind == "identifier" and text.startswith("#"):
         out.append(text[1:])
+    if kind == "identifier" and text.isdigit() and len(text) >= 4:
+        out.append(f"{int(text):,}")  # the same literal with thousands separators ("15,000")
     if kind == "url":
         out.append(text.rstrip("/"))
     return out
@@ -716,23 +747,33 @@ def _contains(haystack: str, needle: str, *, tails: bool = False) -> bool:
     if not needle:
         return False
     n = len(needle)
+    digits = needle.replace(",", "").isdigit()
     i = haystack.find(needle)
     while i >= 0:
         before = haystack[i - 1] if i > 0 else " "
         after = haystack[i + n] if i + n < len(haystack) else " "
-        if not before.isalnum() and (before != "_" or tails) and not after.isalnum() and after != "_":
+        whole = not before.isalnum() and (before != "_" or tails) and not after.isalnum() and after != "_"
+        if whole and not (digits and _decimal_part(haystack, i, n)):
             return True
         i = haystack.find(needle, i + 1)
     return False
 
 
-def _numbers_in(text: str) -> tuple[list[float], list[int], list[float]]:
-    """Numbers a source offers, the lengths of its JSON arrays (natural counts: passengers, items), and
-    the numbers that are money (a JSON value under a key such as price or total, or a currency amount).
-    For JSON, numbers inside string values come first and numeric values last, so quantities such as
-    prices sit in the recent window that derivations search; strings that are only a long run of
-    digits are identifiers, matched as text instead. String values are scanned in one pass, joined by
-    a separator that cannot form a range."""
+def _decimal_part(haystack: str, i: int, n: int) -> bool:
+    """The digits at haystack[i:i+n] are part of a decimal number (12345 in 12345.00 or 0.12345)."""
+    after_dot = i + n + 1 < len(haystack) and haystack[i + n] == "." and haystack[i + n + 1].isdigit()
+    before_dot = i >= 2 and haystack[i - 1] == "." and haystack[i - 2].isdigit()
+    return after_dot or before_dot
+
+
+def _numbers_in(text: str) -> tuple[list[float], list[int], list[list[float]]]:
+    """Numbers a source offers; counts it states (an integer 2..12 under a key such as quantity,
+    seats, passengers); and groups of money fields that may be added together: the same money field
+    across the items of one list (each item's price), or the currency amounts of one string. Two
+    different fields of one object (a fee and a tax) are not a group: adding them makes an amount out
+    of almost anything. For JSON, numbers inside string values come first and numeric values last, so
+    quantities such as prices sit in the recent window that derivations search; strings that are only
+    a long run of digits are identifiers, matched as text instead."""
     stripped = text.lstrip()
     if stripped[:1] in "[{":
         try:
@@ -742,27 +783,56 @@ def _numbers_in(text: str) -> tuple[list[float], list[int], list[float]]:
         if data is not None:
             strings: list[str] = []
             numeric: list[float] = []
-            lengths: list[int] = []
-            money: list[float] = []
-            stack: list[tuple[Any, bool]] = [(data, False)]
+            counts: list[int] = []
+            groups: list[list[float]] = []
+            stack: list[Any] = [data]
             while stack:
-                x, is_money = stack.pop()
+                x = stack.pop()
                 if isinstance(x, dict):
-                    stack.extend((v, is_money or _money_key(k)) for k, v in x.items())
+                    for k, v in x.items():
+                        if isinstance(v, bool):
+                            continue
+                        if isinstance(v, int) and 2 <= v <= MAX_COUNT and _count_key(k):
+                            counts.append(v)
+                        if isinstance(v, dict | list):
+                            stack.append(v)
+                        elif isinstance(v, str):
+                            _string_number(v, strings, groups)
+                        elif isinstance(v, int | float):
+                            numeric.append(float(v))
                 elif isinstance(x, list):
-                    lengths.append(len(x))
-                    stack.extend((v, is_money) for v in x)
-                elif isinstance(x, str):
-                    if not (x.isdigit() and len(x) >= 6) and any(c.isdigit() for c in x):
-                        strings.append(x)
-                        if "$" in x or "€" in x or "£" in x or "¥" in x:
-                            money += _currency(x)
-                elif isinstance(x, int | float) and not isinstance(x, bool):
-                    numeric.append(float(x))
-                    if is_money:
-                        money.append(float(x))
-            return (_quantities(_JOIN.join(strings)) if strings else []) + numeric, lengths, money
-    return _quantities(text), [], _currency(text)
+                    dicts = [e for e in x if isinstance(e, dict)]
+                    if len(dicts) >= 2:
+                        for k in {key for e in dicts for key in e}:
+                            if _money_key(k):
+                                vals = [
+                                    float(e[k])
+                                    for e in dicts
+                                    if isinstance(e.get(k), int | float) and not isinstance(e.get(k), bool)
+                                ]
+                                if len(vals) >= 2:
+                                    groups.append(vals)
+                    for e in x:
+                        if isinstance(e, bool):
+                            continue
+                        if isinstance(e, dict | list):
+                            stack.append(e)
+                        elif isinstance(e, str):
+                            _string_number(e, strings, groups)
+                        elif isinstance(e, int | float):
+                            numeric.append(float(e))
+            return (_quantities(_JOIN.join(strings)) if strings else []) + numeric, counts, groups
+    amounts = _currency(text)
+    return _quantities(text), [], ([amounts] if len(amounts) >= 2 else [])
+
+
+def _string_number(x: str, strings: list[str], groups: list[list[float]]) -> None:
+    if not (x.isdigit() and len(x) >= 6) and any(c.isdigit() for c in x):
+        strings.append(x)
+        if "$" in x or "€" in x or "£" in x or "¥" in x:
+            amounts = _currency(x)
+            if len(amounts) >= 2:
+                groups.append(amounts)
 
 
 def _examples(text: str) -> set[str]:
@@ -781,6 +851,16 @@ def _examples(text: str) -> set[str]:
 
 
 @functools.lru_cache(maxsize=4096)
+def _count_key(key: object) -> bool:
+    return bool(_COUNT_KEY.search(str(key)))
+
+
+def _money_digits(text: str) -> list[float]:
+    """A bare run of five or more digits that a money word introduces ("send 15000", "a budget of
+    25000") is an amount even without a separator; the same run after "zip" or "order" is not."""
+    return [float(m.group(1)) for m in _MONEY_DIGITS.finditer(text)]
+
+
 def _money_key(key: object) -> bool:
     return bool(_MONEY_KEY.search(str(key)))
 

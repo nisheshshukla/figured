@@ -1,0 +1,308 @@
+[
+  {
+    "label": "gpt-4o-retail",
+    "runs_ok": 278,
+    "flagged_ok": 1,
+    "base_flagged_ok": 39,
+    "calls": 3274,
+    "runs_fail": 182,
+    "flagged_fail": 3,
+    "base_flagged_fail": 13,
+    "seconds": 9.5,
+    "wrong": {
+      "identifier": 131,
+      "write to a tool the task never required": 46,
+      "not checked (no digits, names, enums, small counts)": 11,
+      "phrase": 18
+    },
+    "wrong_flag": {
+      "identifier": 3,
+      "write to a tool the task never required": 1,
+      "not checked (no digits, names, enums, small counts)": 0,
+      "phrase": 0
+    },
+    "wrong_base": {
+      "identifier": 1,
+      "write to a tool the task never required": 1,
+      "not checked (no digits, names, enums, small counts)": 0,
+      "phrase": 0
+    },
+    "corruptions": {
+      "identifier": [
+        763,
+        763,
+        714
+      ],
+      "email": [
+        42,
+        42,
+        42
+      ],
+      "phrase": [
+        19,
+        19,
+        19
+      ]
+    },
+    "substitutions": {
+      "identifier": [
+        458,
+        0,
+        0
+      ],
+      "email": [
+        40,
+        0,
+        0
+      ]
+    },
+    "examples": {
+      "flag_ok": [
+        "gpt-4o-retail:45/0 exchange_delivered_order_items.payment_method_id = 'gift_card_0000000'"
+      ],
+      "real_catch": [
+        "gpt-4o-retail:87/1 modify_pending_order_address.zip = '20001', expected ['\"20307\"']",
+        "gpt-4o-retail:87/1 modify_pending_order_address.zip = '20001', expected ['\"20307\"']",
+        "gpt-4o-retail:87/1 modify_user_address.zip = '20001', expected ['\"20307\"']"
+      ]
+    }
+  },
+  {
+    "label": "gpt-4o-airline",
+    "runs_fail": 116,
+    "flagged_fail": 12,
+    "base_flagged_fail": 42,
+    "calls": 1164,
+    "runs_ok": 84,
+    "flagged_ok": 4,
+    "base_flagged_ok": 12,
+    "seconds": 2.7,
+    "wrong": {
+      "not checked (no digits, names, enums, small counts)": 67,
+      "number": 42,
+      "identifier": 125,
+      "write to a tool the task never required": 51,
+      "date": 16
+    },
+    "wrong_flag": {
+      "not checked (no digits, names, enums, small counts)": 0,
+      "number": 9,
+      "identifier": 0,
+      "write to a tool the task never required": 2,
+      "date": 0
+    },
+    "wrong_base": {
+      "not checked (no digits, names, enums, small counts)": 0,
+      "number": 19,
+      "identifier": 0,
+      "write to a tool the task never required": 2,
+      "date": 0
+    },
+    "corruptions": {
+      "date": [
+        30,
+        24,
+        18
+      ],
+      "identifier": [
+        164,
+        164,
+        149
+      ],
+      "number": [
+        3,
+        3,
+        0
+      ]
+    },
+    "substitutions": {
+      "date": [
+        31,
+        0,
+        0
+      ],
+      "identifier": [
+        27,
+        0,
+        0
+      ],
+      "number": [
+        3,
+        0,
+        0
+      ]
+    },
+    "examples": {
+      "flag_ok": [
+        "gpt-4o-airline:26/0 update_reservation_flights.payment_id = 'credit_card_7334'",
+        "gpt-4o-airline:20/1 update_reservation_flights.payment_id = 'credit_card_5634230'",
+        "gpt-4o-airline:26/2 update_reservation_flights.payment_id = 'credit_card_7334'",
+        "gpt-4o-airline:20/3 update_reservation_flights.payment_id = 'credit_card_5634230'"
+      ],
+      "real_catch": [
+        "gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 100, expected ['250', '5']",
+        "gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 155, expected ['250', '5']",
+        "gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 100, expected ['250', '5']",
+        "gpt-4o-airline:0/1 book_reservation.payment_methods[].amount = 205, expected ['250', '5']",
+        "gpt-4o-airline:10/2 book_reservation.payment_methods[].amount = 124, expected ['39', '67']",
+        "gpt-4o-airline:25/2 book_reservation.payment_methods[].amount = 274, expected ['290']",
+        "gpt-4o-airline:0/3 book_reservation.payment_methods[].amount = 100, expected ['250', '5']",
+        "gpt-4o-airline:0/3 book_reservation.payment_methods[].amount = 205, expected ['250', '5']",
+        "gpt-4o-airline:10/3 book_reservation.payment_methods[].amount = 160, expected ['39', '67']"
+      ]
+    }
+  },
+  {
+    "label": "sonnet-35-new-retail",
+    "runs_ok": 637,
+    "flagged_ok": 3,
+    "base_flagged_ok": 78,
+    "calls": 7086,
+    "runs_fail": 283,
+    "flagged_fail": 4,
+    "base_flagged_fail": 15,
+    "seconds": 26.1,
+    "wrong": {
+      "identifier": 159,
+      "phrase": 18,
+      "write to a tool the task never required": 29,
+      "not checked (no digits, names, enums, small counts)": 7
+    },
+    "wrong_flag": {
+      "identifier": 2,
+      "phrase": 0,
+      "write to a tool the task never required": 0,
+      "not checked (no digits, names, enums, small counts)": 0
+    },
+    "wrong_base": {
+      "identifier": 2,
+      "phrase": 0,
+      "write to a tool the task never required": 0,
+      "not checked (no digits, names, enums, small counts)": 0
+    },
+    "corruptions": {
+      "identifier": [
+        1733,
+        1732,
+        1615
+      ],
+      "email": [
+        119,
+        119,
+        119
+      ],
+      "phrase": [
+        54,
+        54,
+        54
+      ]
+    },
+    "substitutions": {
+      "identifier": [
+        1130,
+        0,
+        0
+      ],
+      "email": [
+        27,
+        0,
+        0
+      ]
+    },
+    "examples": {
+      "flag_ok": [
+        "sonnet-35-new-retail:23/5 find_user_id_by_name_zip.zip = '98101'",
+        "sonnet-35-new-retail:8/7 get_order_details.order_id = '#W0028236'",
+        "sonnet-35-new-retail:65/7 find_user_id_by_name_zip.zip = '95112'"
+      ],
+      "real_catch": [
+        "sonnet-35-new-retail:105/5 modify_pending_order_items.new_item_ids[] = '2411639847', expected ['\"8964750292\"']",
+        "sonnet-35-new-retail:105/6 modify_pending_order_items.new_item_ids[] = '5209958008', expected ['\"8964750292\"']"
+      ]
+    }
+  },
+  {
+    "label": "sonnet-35-new-airline",
+    "runs_fail": 216,
+    "flagged_fail": 18,
+    "base_flagged_fail": 88,
+    "calls": 2761,
+    "runs_ok": 184,
+    "flagged_ok": 2,
+    "base_flagged_ok": 29,
+    "seconds": 6.9,
+    "wrong": {
+      "not checked (no digits, names, enums, small counts)": 73,
+      "identifier": 225,
+      "number": 89,
+      "write to a tool the task never required": 89,
+      "date": 21
+    },
+    "wrong_flag": {
+      "not checked (no digits, names, enums, small counts)": 2,
+      "identifier": 3,
+      "number": 21,
+      "write to a tool the task never required": 2,
+      "date": 2
+    },
+    "wrong_base": {
+      "not checked (no digits, names, enums, small counts)": 0,
+      "identifier": 3,
+      "number": 62,
+      "write to a tool the task never required": 13,
+      "date": 3
+    },
+    "corruptions": {
+      "identifier": [
+        393,
+        393,
+        366
+      ],
+      "date": [
+        72,
+        57,
+        35
+      ],
+      "number": [
+        3,
+        3,
+        0
+      ]
+    },
+    "substitutions": {
+      "identifier": [
+        79,
+        0,
+        0
+      ],
+      "date": [
+        123,
+        0,
+        2
+      ],
+      "number": [
+        3,
+        0,
+        0
+      ]
+    },
+    "examples": {
+      "real_catch": [
+        "sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 100, expected ['250', '5']",
+        "sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 179, expected ['250', '5']",
+        "sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 100, expected ['250', '5']",
+        "sonnet-35-new-airline:0/0 book_reservation.payment_methods[].amount = 220, expected ['250', '5']",
+        "sonnet-35-new-airline:26/0 update_reservation_flights.payment_id = 'credit_card_7334', expected ['\"credit_card_9074831\"']",
+        "sonnet-35-new-airline:0/1 book_reservation.payment_methods[].amount = 70, expected ['250', '5']",
+        "sonnet-35-new-airline:8/1 book_reservation.payment_methods[].amount = 250, expected ['129', '1786']",
+        "sonnet-35-new-airline:8/1 book_reservation.payment_methods[].amount = 250, expected ['129', '1786']",
+        "sonnet-35-new-airline:8/1 book_reservation.payment_methods[].amount = 2033, expected ['129', '1786']",
+        "sonnet-35-new-airline:8/1 book_reservation.payment_methods[].amount = -500, expected ['129', '1786']"
+      ],
+      "flag_ok": [
+        "sonnet-35-new-airline:1/4 get_user_details.user_id = 'olivia_gonzalez_902'",
+        "sonnet-35-new-airline:1/5 get_user_details.user_id = 'olivia_gonzalez_631'"
+      ]
+    }
+  }
+]

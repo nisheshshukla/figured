@@ -111,7 +111,7 @@ def test_numbers_derived_with_and_without_filters() -> None:
 def test_pair_window_and_index_cap() -> None:
     s = store()
     s.add("tool", "tool:big", 1, json.dumps({"v": list(range(1000, 1100))}))
-    hit = s.find("number", 2075.0)
+    hit = s.find("number", 2150.0)
     assert hit is not None and hit.how == "derived:sum"
     capped = SourceStore(Policy(), None, max_index_chars=20)
     capped.add("tool", "tool:t", 1, '{"a": 1, "padding": "xxxxxxxxxxxxxxxx", "b": 777777}')
@@ -120,15 +120,15 @@ def test_pair_window_and_index_cap() -> None:
 
 def test_numbers_in_handles_bad_and_deep_json() -> None:
     assert _numbers_in('{"a": 1, "b": [2, "3.5 million", "1234567890"], "c": true}') == (
-        [3.5e6, 2.0, 1.0],
-        [3],
+        [3.5e6, 1.0, 2.0],
+        [],
         [],
     )
-    assert _numbers_in('{"prices": {"economy": 90}, "seats": 4, "note": "fee $1,250.50"}')[2] == [
-        1250.5,
-        90.0,
-    ]
-    assert _numbers_in("[not json 42, $7") == ([42.0, 7.0], [], [7.0])
+    nums, counts, groups = _numbers_in('{"prices": {"economy": 90}, "seats": 4, "note": "fee $1,250.50"}')
+    assert set(nums) == {90.0, 4.0, 1250.5} and counts == [4] and groups == []
+    assert _numbers_in('{"items": [{"price": 1, "qty": 2}, {"price": 2.5}], "tax": 3}')[2] == [[1.0, 2.5]]
+    assert _numbers_in('{"note": "$5 now, $7 later"}')[2] == [[5.0, 7.0]]
+    assert _numbers_in("[not json 42, $7") == ([42.0, 7.0], [], [])
     deep = "[" * 100_000 + "]" * 100_000
     assert _numbers_in(deep) == ([], [], [])
     s = store()
@@ -165,6 +165,8 @@ def test_prefix_needs_user_digits_and_a_seen_shape() -> None:
 def test_counts_from_arrays_and_words() -> None:
     s = store()
     s.add("tool", "tool:res", 1, '{"passengers": [{"n": "a"}, {"n": "b"}, {"n": "c"}], "price": 174}')
+    assert s.find("number", 522.0, strict=True) is None and not s.has_count(3.0)
+    s.add("tool", "tool:res", 2, '{"passengers": 3, "price": 174}')
     hit = s.find("number", 522.0, strict=True)
     assert hit is not None and hit.how == "derived:count" and s.has_count(3.0) and not s.has_count(2.5)
     t = store()

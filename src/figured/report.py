@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from figured.derive import Match, fmt
@@ -46,6 +47,28 @@ class Report:
     text: str
     results: list[Result]
     evidence_cells: int
+    _index: Any = field(default=None, repr=False, compare=False)
+    _policy: Any = field(default=None, repr=False, compare=False)
+    _coincidence: float | None = field(default=None, repr=False, compare=False)
+
+    def coincidence(self, draws: int = 200, seed: int = 7) -> float | None:
+        """How much a green result means: the fraction of random figures, drawn between the smallest
+        and largest cell, that this table and policy would also call grounded. 0.02 means a made-up
+        figure has a 2% chance of passing; 0.9 means the check is not telling you anything. Computed
+        on request, cached; None without evidence."""
+        if self._index is None or self._coincidence is not None:
+            return self._coincidence
+        values = [v for v in self._index.flat_abs if v]
+        if len(values) < 2:
+            self._coincidence = 0.0
+            return 0.0
+        lo, hi = min(values), max(values)
+        rng = random.Random(seed)
+        hits = sum(
+            1 for _ in range(draws) if self._index.lookup(rng.uniform(lo, hi), self._policy) is not None
+        )
+        self._coincidence = hits / draws
+        return self._coincidence
 
     @property
     def ok(self) -> bool:
@@ -80,6 +103,9 @@ class Report:
     def explain(self) -> str:
         head = "OK" if self.ok else "UNGROUNDED"
         lines = [f"{head} · {self.checked} checked · {len(self.ungrounded)} untraceable"]
+        rate = self.coincidence()
+        if rate is not None:
+            lines[0] += f" · coincidence {rate:.0%}"
         for r in self.results:
             if r.status == "grounded" and r.match:
                 lines.append(f"  ✓ {r.literal:<16} {r.match.kind:<14} {r.match.explanation}")
@@ -95,6 +121,7 @@ class Report:
             "checked": self.checked,
             "ungrounded": self.ungrounded,
             "evidence_cells": self.evidence_cells,
+            "coincidence": self.coincidence(),
             "figures": [r.to_dict() for r in self.results],
         }
 
