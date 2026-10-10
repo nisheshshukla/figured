@@ -622,7 +622,13 @@ class RunMonitor:
         anything); used only so its output does not vouch for a result built from them."""
         if isinstance(value, bool) or value is None:
             return []
-        nums = [float(value)] if isinstance(value, int | float) else scan_values(str(value))
+        if isinstance(value, int | float):
+            try:
+                nums = [float(value)]
+            except OverflowError:
+                nums = []
+        else:
+            nums = scan_values(str(value))
         out = []
         for v in nums:
             if v.is_integer() and abs(v) <= self.policy.small_ints and self.store.has_count(v):
@@ -760,7 +766,7 @@ class RunMonitor:
                 return True
             try:
                 f = float(value)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 return True
             return f.is_integer() and abs(f) <= self.policy.small_ints
         constants = self.policy.constants
@@ -847,7 +853,10 @@ def _in_text(text: str, kind: Kind, value: Any, as_of: dt.date | None) -> bool:
     """`value` appears in an agent's message the user confirmed."""
     low = text.lower()
     if kind == "number":
-        v = float(value)
+        try:
+            v = float(value)
+        except OverflowError:
+            return False
         return any(abs(v - x) <= 0.005 for x in scan_values(text))
     if kind == "date":
         want = parse_dates(str(value))

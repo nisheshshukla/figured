@@ -21,3 +21,23 @@ jobs:
       - run: ruff format --check .
       - run: mypy
       - run: pytest --cov=figured --cov-report=term-missing --cov-fail-under=95
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - name: Install the wheel into a clean environment and use it as a user would
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+          /tmp/clean/bin/python -c "import figured, figured.agents; print(figured.__version__)"
+          /tmp/clean/bin/figured --help > /dev/null
+          echo '[{"region": "A", "revenue": 4820000}]' > /tmp/rows.json
+          /tmp/clean/bin/figured "Revenue was $4.82M." --rows /tmp/rows.json
+          cd /tmp && /tmp/clean/bin/python "$GITHUB_WORKSPACE/examples/basic.py" > /dev/null
+          cd /tmp && /tmp/clean/bin/python "$GITHUB_WORKSPACE/examples/agent_guard.py" > /dev/null

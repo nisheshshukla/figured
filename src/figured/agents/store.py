@@ -267,8 +267,8 @@ class SourceStore:
     ) -> Hit | None:
         """Most recent untainted source that can account for `value`, limited to `allowed` kinds."""
         if kind == "number":
-            number = float(value)  # type: ignore[arg-type]
-            return self._find_number(number, allowed, strict) if math.isfinite(number) else None
+            number = _float(value)  # type: ignore[arg-type]
+            return self._find_number(number, allowed, strict) if number is not None else None
         if kind == "date":
             return self._find_date(str(value), allowed, shift_ok, period_ok)
         text = norm(str(value))
@@ -917,16 +917,20 @@ def _numbers_in(text: str) -> tuple[list[float], list[int], list[list[float]]]:
                         elif isinstance(v, str):
                             _string_number(v, strings, groups)
                         elif isinstance(v, int | float):
-                            numeric.append(float(v))
+                            f = _float(v)
+                            if f is not None:
+                                numeric.append(f)
                 elif isinstance(x, list):
                     dicts = [e for e in x if isinstance(e, dict)]
                     if len(dicts) >= 2:
                         for k in {key for e in dicts for key in e}:
                             if _money_key(k):
                                 vals = [
-                                    float(e[k])
+                                    f
                                     for e in dicts
                                     if isinstance(e.get(k), int | float) and not isinstance(e.get(k), bool)
+                                    for f in [_float(e[k])]
+                                    if f is not None
                                 ]
                                 if len(vals) >= 2:
                                     groups.append(vals)
@@ -938,7 +942,9 @@ def _numbers_in(text: str) -> tuple[list[float], list[int], list[list[float]]]:
                         elif isinstance(e, str):
                             _string_number(e, strings, groups)
                         elif isinstance(e, int | float):
-                            numeric.append(float(e))
+                            f = _float(e)
+                            if f is not None:
+                                numeric.append(f)
             return (_quantities(_JOIN.join(strings)) if strings else []) + numeric, counts, groups
     amounts = _currency(text)
     return _quantities(text), [], ([amounts] if len(amounts) >= 2 else [])
@@ -1039,6 +1045,15 @@ def _records(text: str) -> dict[str, set[str]]:
         elif isinstance(x, list):
             stack.extend(x)
     return out
+
+
+def _float(v: int | float) -> float | None:
+    """A JSON number as a float, or None when it is too large for one (10**400) or not finite."""
+    try:
+        f = float(v)
+    except OverflowError:
+        return None
+    return f if math.isfinite(f) else None
 
 
 def _currency(text: str) -> list[float]:

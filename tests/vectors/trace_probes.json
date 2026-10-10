@@ -1,0 +1,1574 @@
+[
+ {
+  "id": "T01-correct-cell",
+  "source": "review-0.4.1",
+  "desc": "exact cell",
+  "text": "North America revenue was $4,820,000.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T02-wrong-within-tol",
+  "source": "review-0.4.1",
+  "desc": "$4.75M for 4.82M (1.45% off, 70k misreport)",
+  "text": "North America brought in $4.75M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T03-made-up-percent",
+  "source": "review-0.4.1",
+  "desc": "fabricated growth % passes by default policy",
+  "text": "APAC revenue grew 73% year over year.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "73%"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T04-made-up-percent-strict",
+  "source": "review-0.4.1",
+  "desc": "same, STRICT",
+  "text": "APAC revenue grew 73% year over year.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {
+   "policy": {
+    "__policy__": {
+     "rel_tolerance": 0.005,
+     "abs_tolerance": 0.0,
+     "ignore_below": 10.0,
+     "ignore_years": true,
+     "year_range": [
+      1900,
+      2100
+     ],
+     "unmatched_percent": "flag",
+     "max_rows": 12,
+     "max_cells": 40,
+     "derivations": [
+      "cell",
+      "column_mean",
+      "column_sum",
+      "row_sum",
+      "share"
+     ],
+     "parse_strings": true,
+     "flag_without_evidence_above": 1000.0
+    }
+   }
+  },
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "73%"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T05-wrong-attribution",
+  "source": "review-0.4.1",
+  "desc": "53% is NA vs EU; claim says APAC vs EU (truth 63%)",
+  "text": "APAC's revenue is 53% higher than Europe's.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "53%"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T06-average-fails",
+  "source": "review-0.4.1",
+  "desc": "mean of the revenue column (3,300,000) is not a derivation",
+  "text": "Average revenue per region was $3.3M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T07-share-of-total-pct",
+  "source": "review-0.4.1",
+  "desc": "APAC share of total = 19.5% (needs cell / column sum)",
+  "text": "APAC was 19.5% of total revenue.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T08-share-of-total-strict",
+  "source": "review-0.4.1",
+  "desc": "same under STRICT (unmatched percent flagged)",
+  "text": "APAC was 19.5% of total revenue.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {
+   "policy": {
+    "__policy__": {
+     "rel_tolerance": 0.005,
+     "abs_tolerance": 0.0,
+     "ignore_below": 10.0,
+     "ignore_years": true,
+     "year_range": [
+      1900,
+      2100
+     ],
+     "unmatched_percent": "flag",
+     "max_rows": 12,
+     "max_cells": 40,
+     "derivations": [
+      "cell",
+      "column_mean",
+      "column_sum",
+      "row_sum",
+      "share"
+     ],
+     "parse_strings": true,
+     "flag_without_evidence_above": 1000.0
+    }
+   }
+  },
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T09-ratio-vs-pct",
+  "source": "review-0.4.1",
+  "desc": "ratio 0.65 (EU/NA) as plain figure, under 100 so ignored",
+  "text": "Europe is 0.65 of North America.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T10-150-vs-150pct",
+  "source": "review-0.4.1",
+  "desc": "'150' cannot match a 153% share",
+  "text": "North America is 150 of Europe.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "150"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T11-year-count",
+  "source": "review-0.4.1",
+  "desc": "'2024 orders' ignored as a year",
+  "text": "APAC had 2024 orders last week.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T12-year-range",
+  "source": "review-0.4.1",
+  "desc": "'between 1,950 and 2,050' plain",
+  "text": "Daily orders ran between 1,950 and 2,050.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "1,950",
+   "2,050"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T13-currency-small",
+  "source": "review-0.4.1",
+  "desc": "$71 AOV wrong (true 55)",
+  "text": "Average order value in APAC was $71.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "$71"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T14-currency-right",
+  "source": "review-0.4.1",
+  "desc": "$55 AOV right (1.93M/35.1k)",
+  "text": "Average order value in APAC was $55.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": false,
+  "ungrounded": [
+   "$55"
+  ],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T15-wide-range",
+  "source": "review-0.4.1",
+  "desc": "'between $1M and $10M' grounded by any cell",
+  "text": "Each region made between $1M and $10M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T16-sign-ignored",
+  "source": "review-0.4.1",
+  "desc": "'fell by $1.67M' when NA exceeds EU (sign ignored)",
+  "text": "Europe's revenue fell by $1.67M relative to North America.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": false,
+  "ungrounded": [
+   "$1.67M"
+  ],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T17-phone-in-answer",
+  "source": "review-0.4.1",
+  "desc": "a phone number is parsed as numbers",
+  "text": "Call 415-555-0132 for the North America desk ($4.82M).",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": false,
+  "ungrounded": [
+   "415",
+   "555",
+   "0132"
+  ],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T18-ISO-9001",
+  "source": "review-0.4.1",
+  "desc": "'ISO 9001' flagged as an ungrounded number",
+  "text": "All regions are ISO 9001 certified; revenue $9.9M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": false,
+  "ungrounded": [
+   "9001"
+  ],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T19-euro-sep",
+  "source": "review-0.4.1",
+  "desc": "European separators 4.820.000",
+  "text": "North America: 4.820.000 in revenue.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T20-sci",
+  "source": "review-0.4.1",
+  "desc": "scientific notation",
+  "text": "Total revenue was 9.9e6.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T21-k-scale",
+  "source": "review-0.4.1",
+  "desc": "144k orders (column sum)",
+  "text": "The regions had 144k orders in total.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T22-10K-filing",
+  "source": "review-0.4.1",
+  "desc": "'10-K filing' -> 10 thousand?",
+  "text": "See the 10-K filing; revenue was $9.9M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "T23-sum-across-rows",
+  "source": "review-0.4.1",
+  "desc": "NA + APAC = 6.75M",
+  "text": "North America and APAC together made $6.75M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": false,
+  "ungrounded": [
+   "$6.75M"
+  ],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "T24-wrong-sum",
+  "source": "review-0.4.1",
+  "desc": "NA + APAC claimed as 7.1M",
+  "text": "North America and APAC together made $7.1M.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "$7.1M"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "T25-diff-coincidence",
+  "source": "review-0.4.1",
+  "desc": "wrong figure that equals orders[NA]-orders[EU]=13,400",
+  "text": "We lost $13,400 to refunds.",
+  "rows": [
+   {
+    "region": "North America",
+    "revenue": 4820000,
+    "orders": 61300
+   },
+   {
+    "region": "Europe",
+    "revenue": 3150000,
+    "orders": 47900
+   },
+   {
+    "region": "APAC",
+    "revenue": 1930000,
+    "orders": 35100
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "$13,400"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D01",
+  "source": "review-0.4.2-fresh",
+  "desc": "two cells, exact",
+  "text": "Austin sold $182,400 across 3,210 units.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D02",
+  "source": "review-0.4.2-fresh",
+  "desc": "column sum, exact",
+  "text": "Combined sales were $423,450.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D03",
+  "source": "review-0.4.2-fresh",
+  "desc": "column mean, rounded to the dollar",
+  "text": "Average sales per store were $141,150.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D04",
+  "source": "review-0.4.2-fresh",
+  "desc": "share of column total, 1 decimal",
+  "text": "Austin accounted for 43.1% of sales.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D05",
+  "source": "review-0.4.2-fresh",
+  "desc": "column sum rounded to 3 s.f. with k",
+  "text": "Sales came to roughly $423k in total.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D06",
+  "source": "review-0.4.2-fresh",
+  "desc": "invented figure $31,500 (120 is a cell)",
+  "text": "Tulsa returned 120 items, which cost the chain $31,500.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "$31,500"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D07",
+  "source": "review-0.4.2-fresh",
+  "desc": "cell off by +3%",
+  "text": "Boise's sales were $100,064.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "R42-D08",
+  "source": "review-0.4.2-fresh",
+  "desc": "sign-flipped cell (literal negative)",
+  "text": "Boise's sales came to -$97,150.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "R42-D09",
+  "source": "review-0.4.2-fresh",
+  "desc": "number equals an unrelated cell (units value labelled as returns $) - README says this passes by design",
+  "text": "Austin's returns totaled $3,210.",
+  "rows": [
+   {
+    "store": "Austin",
+    "sales": 182400,
+    "units": 3210,
+    "returns": 96
+   },
+   {
+    "store": "Boise",
+    "sales": 97150,
+    "units": 1880,
+    "returns": 41
+   },
+   {
+    "store": "Tulsa",
+    "sales": 143900,
+    "units": 2575,
+    "returns": 120
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "R42-D10",
+  "source": "review-0.4.2-fresh",
+  "desc": "two column sums over 12 rows",
+  "text": "Revenue for the year was $2,352,921 against costs of $1,100,295.",
+  "rows": [
+   {
+    "month": "2025-01",
+    "revenue": 385243,
+    "cost": 49184,
+    "customers": 1209
+   },
+   {
+    "month": "2025-02",
+    "revenue": 194194,
+    "cost": 84196,
+    "customers": 4457
+   },
+   {
+    "month": "2025-03",
+    "revenue": 123158,
+    "cost": 46868,
+    "customers": 2224
+   },
+   {
+    "month": "2025-04",
+    "revenue": 359588,
+    "cost": 130604,
+    "customers": 1320
+   },
+   {
+    "month": "2025-05",
+    "revenue": 65622,
+    "cost": 44561,
+    "customers": 4382
+   },
+   {
+    "month": "2025-06",
+    "revenue": 171981,
+    "cost": 152475,
+    "customers": 1234
+   },
+   {
+    "month": "2025-07",
+    "revenue": 344254,
+    "cost": 72124,
+    "customers": 7673
+   },
+   {
+    "month": "2025-08",
+    "revenue": 165574,
+    "cost": 137757,
+    "customers": 5357
+   },
+   {
+    "month": "2025-09",
+    "revenue": 53407,
+    "cost": 61853,
+    "customers": 7724
+   },
+   {
+    "month": "2025-10",
+    "revenue": 228389,
+    "cost": 92842,
+    "customers": 3347
+   },
+   {
+    "month": "2025-11",
+    "revenue": 162886,
+    "cost": 108236,
+    "customers": 2474
+   },
+   {
+    "month": "2025-12",
+    "revenue": 98625,
+    "cost": 119595,
+    "customers": 2384
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D11",
+  "source": "review-0.4.2-fresh",
+  "desc": "column mean over 12 rows",
+  "text": "Average monthly customers: 3,649.",
+  "rows": [
+   {
+    "month": "2025-01",
+    "revenue": 385243,
+    "cost": 49184,
+    "customers": 1209
+   },
+   {
+    "month": "2025-02",
+    "revenue": 194194,
+    "cost": 84196,
+    "customers": 4457
+   },
+   {
+    "month": "2025-03",
+    "revenue": 123158,
+    "cost": 46868,
+    "customers": 2224
+   },
+   {
+    "month": "2025-04",
+    "revenue": 359588,
+    "cost": 130604,
+    "customers": 1320
+   },
+   {
+    "month": "2025-05",
+    "revenue": 65622,
+    "cost": 44561,
+    "customers": 4382
+   },
+   {
+    "month": "2025-06",
+    "revenue": 171981,
+    "cost": 152475,
+    "customers": 1234
+   },
+   {
+    "month": "2025-07",
+    "revenue": 344254,
+    "cost": 72124,
+    "customers": 7673
+   },
+   {
+    "month": "2025-08",
+    "revenue": 165574,
+    "cost": 137757,
+    "customers": 5357
+   },
+   {
+    "month": "2025-09",
+    "revenue": 53407,
+    "cost": 61853,
+    "customers": 7724
+   },
+   {
+    "month": "2025-10",
+    "revenue": 228389,
+    "cost": 92842,
+    "customers": 3347
+   },
+   {
+    "month": "2025-11",
+    "revenue": 162886,
+    "cost": 108236,
+    "customers": 2474
+   },
+   {
+    "month": "2025-12",
+    "revenue": 98625,
+    "cost": 119595,
+    "customers": 2384
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D12",
+  "source": "review-0.4.2-fresh",
+  "desc": "cell plus its share",
+  "text": "March revenue was $123,158, 5.2% of the year.",
+  "rows": [
+   {
+    "month": "2025-01",
+    "revenue": 385243,
+    "cost": 49184,
+    "customers": 1209
+   },
+   {
+    "month": "2025-02",
+    "revenue": 194194,
+    "cost": 84196,
+    "customers": 4457
+   },
+   {
+    "month": "2025-03",
+    "revenue": 123158,
+    "cost": 46868,
+    "customers": 2224
+   },
+   {
+    "month": "2025-04",
+    "revenue": 359588,
+    "cost": 130604,
+    "customers": 1320
+   },
+   {
+    "month": "2025-05",
+    "revenue": 65622,
+    "cost": 44561,
+    "customers": 4382
+   },
+   {
+    "month": "2025-06",
+    "revenue": 171981,
+    "cost": 152475,
+    "customers": 1234
+   },
+   {
+    "month": "2025-07",
+    "revenue": 344254,
+    "cost": 72124,
+    "customers": 7673
+   },
+   {
+    "month": "2025-08",
+    "revenue": 165574,
+    "cost": 137757,
+    "customers": 5357
+   },
+   {
+    "month": "2025-09",
+    "revenue": 53407,
+    "cost": 61853,
+    "customers": 7724
+   },
+   {
+    "month": "2025-10",
+    "revenue": 228389,
+    "cost": 92842,
+    "customers": 3347
+   },
+   {
+    "month": "2025-11",
+    "revenue": 162886,
+    "cost": 108236,
+    "customers": 2474
+   },
+   {
+    "month": "2025-12",
+    "revenue": 98625,
+    "cost": 119595,
+    "customers": 2384
+   }
+  ],
+  "policy": {},
+  "expect_ok": true,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D13",
+  "source": "review-0.4.2-fresh",
+  "desc": "column sum off by -3%",
+  "text": "The year's revenue was $2,282,333.",
+  "rows": [
+   {
+    "month": "2025-01",
+    "revenue": 385243,
+    "cost": 49184,
+    "customers": 1209
+   },
+   {
+    "month": "2025-02",
+    "revenue": 194194,
+    "cost": 84196,
+    "customers": 4457
+   },
+   {
+    "month": "2025-03",
+    "revenue": 123158,
+    "cost": 46868,
+    "customers": 2224
+   },
+   {
+    "month": "2025-04",
+    "revenue": 359588,
+    "cost": 130604,
+    "customers": 1320
+   },
+   {
+    "month": "2025-05",
+    "revenue": 65622,
+    "cost": 44561,
+    "customers": 4382
+   },
+   {
+    "month": "2025-06",
+    "revenue": 171981,
+    "cost": 152475,
+    "customers": 1234
+   },
+   {
+    "month": "2025-07",
+    "revenue": 344254,
+    "cost": 72124,
+    "customers": 7673
+   },
+   {
+    "month": "2025-08",
+    "revenue": 165574,
+    "cost": 137757,
+    "customers": 5357
+   },
+   {
+    "month": "2025-09",
+    "revenue": 53407,
+    "cost": 61853,
+    "customers": 7724
+   },
+   {
+    "month": "2025-10",
+    "revenue": 228389,
+    "cost": 92842,
+    "customers": 3347
+   },
+   {
+    "month": "2025-11",
+    "revenue": 162886,
+    "cost": 108236,
+    "customers": 2474
+   },
+   {
+    "month": "2025-12",
+    "revenue": 98625,
+    "cost": 119595,
+    "customers": 2384
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": false,
+  "ungrounded": [
+   "$2,282,333"
+  ],
+  "outcome": "correct"
+ },
+ {
+  "id": "R42-D14",
+  "source": "review-0.4.2-fresh",
+  "desc": "invented cell on 12-row table",
+  "text": "June brought in $123,456 in revenue.",
+  "rows": [
+   {
+    "month": "2025-01",
+    "revenue": 385243,
+    "cost": 49184,
+    "customers": 1209
+   },
+   {
+    "month": "2025-02",
+    "revenue": 194194,
+    "cost": 84196,
+    "customers": 4457
+   },
+   {
+    "month": "2025-03",
+    "revenue": 123158,
+    "cost": 46868,
+    "customers": 2224
+   },
+   {
+    "month": "2025-04",
+    "revenue": 359588,
+    "cost": 130604,
+    "customers": 1320
+   },
+   {
+    "month": "2025-05",
+    "revenue": 65622,
+    "cost": 44561,
+    "customers": 4382
+   },
+   {
+    "month": "2025-06",
+    "revenue": 171981,
+    "cost": 152475,
+    "customers": 1234
+   },
+   {
+    "month": "2025-07",
+    "revenue": 344254,
+    "cost": 72124,
+    "customers": 7673
+   },
+   {
+    "month": "2025-08",
+    "revenue": 165574,
+    "cost": 137757,
+    "customers": 5357
+   },
+   {
+    "month": "2025-09",
+    "revenue": 53407,
+    "cost": 61853,
+    "customers": 7724
+   },
+   {
+    "month": "2025-10",
+    "revenue": 228389,
+    "cost": 92842,
+    "customers": 3347
+   },
+   {
+    "month": "2025-11",
+    "revenue": 162886,
+    "cost": 108236,
+    "customers": 2474
+   },
+   {
+    "month": "2025-12",
+    "revenue": 98625,
+    "cost": 119595,
+    "customers": 2384
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ },
+ {
+  "id": "R42-D15",
+  "source": "review-0.4.2-fresh",
+  "desc": "negative of a cell (sign flipped) on 12-row table",
+  "text": "Costs in July were $-72,124.",
+  "rows": [
+   {
+    "month": "2025-01",
+    "revenue": 385243,
+    "cost": 49184,
+    "customers": 1209
+   },
+   {
+    "month": "2025-02",
+    "revenue": 194194,
+    "cost": 84196,
+    "customers": 4457
+   },
+   {
+    "month": "2025-03",
+    "revenue": 123158,
+    "cost": 46868,
+    "customers": 2224
+   },
+   {
+    "month": "2025-04",
+    "revenue": 359588,
+    "cost": 130604,
+    "customers": 1320
+   },
+   {
+    "month": "2025-05",
+    "revenue": 65622,
+    "cost": 44561,
+    "customers": 4382
+   },
+   {
+    "month": "2025-06",
+    "revenue": 171981,
+    "cost": 152475,
+    "customers": 1234
+   },
+   {
+    "month": "2025-07",
+    "revenue": 344254,
+    "cost": 72124,
+    "customers": 7673
+   },
+   {
+    "month": "2025-08",
+    "revenue": 165574,
+    "cost": 137757,
+    "customers": 5357
+   },
+   {
+    "month": "2025-09",
+    "revenue": 53407,
+    "cost": 61853,
+    "customers": 7724
+   },
+   {
+    "month": "2025-10",
+    "revenue": 228389,
+    "cost": 92842,
+    "customers": 3347
+   },
+   {
+    "month": "2025-11",
+    "revenue": 162886,
+    "cost": 108236,
+    "customers": 2474
+   },
+   {
+    "month": "2025-12",
+    "revenue": 98625,
+    "cost": 119595,
+    "customers": 2384
+   }
+  ],
+  "policy": {},
+  "expect_ok": false,
+  "ok": true,
+  "ungrounded": [],
+  "outcome": "known_wrong"
+ }
+]
