@@ -233,4 +233,4 @@ AgentDojo with source rules, five models (3,000 runs, Llama 3.3 now readable): 8
 
 Numeric check: default derivations are now cells, column sums and means, shares of a column total, and row sums; pairwise arithmetic is opt-in. Coincidence (random figures called grounded) on a 12×5 table: 99% with pairwise, 70% at the new default, 38% under STRICT; on the README's 3×3 table 10%. The number is now part of every report.
 
-Speed: `before_call` 33 µs median, 0.22 ms p99 on tau-bench (0.4.1: 27 µs, 0.19 ms); `trace` 93 µs on 2×3, 9.3 ms on 2,000×10.
+Speed: `before_call` 33 µs median, 0.22 ms p99 on tau-bench (0.4.1: 27 µs, 0.19 ms); `trace` 93 µs on 2×3, 9.3 ms on 2,000×10. 0.4.3 brings `before_call` to 27 µs and 0.19 ms with identical results (a fingerprint of every report on all 1,980 tau-bench runs is unchanged), and to 45 µs at 400 KB of context and 76 µs at 2 MB, where 0.4.2 took 246 µs and 616 µs.

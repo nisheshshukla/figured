@@ -28,6 +28,7 @@ from .store import MAX_INDEX_CHARS, Hit, SourceStore
 from .values import Kind, classify, extract_text_values, numeric_string, parse_dates
 
 Severity = Literal["warn", "confirm", "block"]
+CallKey = tuple[str, tuple[tuple[str, str], ...]]
 Action = Literal["allow", "warn", "confirm", "block"]
 _ERROR = re.compile(
     r'^\s*(?:error|exception|traceback)\b|"error"\s*:(?!\s*(?:null\b|false\b|""|\[\]|\{\}|0\b))',
@@ -213,7 +214,7 @@ class AgentPolicy:
         return tuple(r for pattern, reqs in self.requires if fnmatch.fnmatchcase(tool, pattern) for r in reqs)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ValueCheck:
     step: int
     where: str
@@ -241,7 +242,7 @@ class ValueCheck:
         return d
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Finding:
     type: Literal[
         "unsourced",
@@ -270,7 +271,7 @@ class Finding:
         }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Decision:
     """What the monitor says about a tool call before it runs."""
 
@@ -356,10 +357,10 @@ class RunMonitor:
         )
         self.report_ = RunReport()
         self.step = 0
-        self._calls: Counter[str] = Counter()
-        self._errored: set[str] = set()
-        self._pending: dict[str, tuple[str, list[str], list[str], str]] = {}
-        self._last_by_tool: dict[str, tuple[str, list[str], list[str], str]] = {}
+        self._calls: Counter[CallKey] = Counter()
+        self._errored: set[CallKey] = set()
+        self._pending: dict[str, tuple[CallKey | None, list[str], list[str], str]] = {}
+        self._last_by_tool: dict[str, tuple[CallKey | None, list[str], list[str], str]] = {}
         self._hints = _schema_hints(tools or [], self.policy.schema_formats)
         tools = [t for t in tools or () if isinstance(t, dict)]
         self._tools = {
@@ -367,6 +368,10 @@ class RunMonitor:
         }
         self._named: dict[str, str] = {}
         self._reads_cache: dict[str, bool] = {}
+        self._ignored_cache: dict[str, bool] = {}
+        self._pure_cache: dict[str, bool] = {}
+        self._tool_cache: dict[str, tuple[bool, bool, tuple[str, ...]]] = {}
+        self._birth_cache: dict[str, bool] = {}
         self._called: list[str] = []
         self._window: list[str] = []
         self._confirmed: str | None = None
@@ -425,13 +430,19 @@ class RunMonitor:
         checks: list[ValueCheck] = []
         findings: list[Finding] = []
         silent: list[str] = []
-        pure = pol.pure(name)
+        pure = self._pure_cache.get(name)
+        if pure is None:
+            pure = self._pure_cache[name] = pol.pure(name)
+        ignored_cache = self._ignored_cache
         bounds_free = pol.search_bounds == "skip" and self._reads(name)
         named = ""
         leaves = _leaves(args)
         for path, value in leaves:
             where = f"{name}.{path}" if path else name
-            if pol.ignored(where):
+            ignored = ignored_cache.get(where)
+            if ignored is None:
+                ignored = ignored_cache[where] = pol.ignored(where)
+            if ignored:
                 continue
             if value is _TOO_DEEP:
                 message = f"{where} is nested more than {_MAX_DEPTH} levels deep and was not checked"
@@ -486,24 +497,29 @@ class RunMonitor:
                     step, where, kind, value, findings, formats=formats, period_ok=period_ok, rule=rule
                 )
             )
-        if pol.needs_confirmation(name) or pol.checks_ambiguity(name):
+        flags = self._tool_cache.get(name)
+        if flags is None:
+            flags = self._tool_cache[name] = (
+                pol.needs_confirmation(name),
+                pol.checks_ambiguity(name),
+                pol.prerequisites(name),
+            )
+        confirm_tool, ambiguity_tool, prerequisites = flags
+        if confirm_tool or ambiguity_tool:
             self._selection(step, name, checks, findings)
-            if pol.needs_confirmation(name):
+            if confirm_tool:
                 self._window = []
         if self._tools and name not in self._tools:
             message = f"{name} is not one of the agent's tools"
             findings.append(Finding("unknown_tool", pol.on_unknown_tool, step, message, name))
-        missing = [
-            r for r in pol.prerequisites(name) if not any(fnmatch.fnmatchcase(c, r) for c in self._called)
-        ]
-        if missing and len(missing) == len(pol.prerequisites(name)):
+        missing = [r for r in prerequisites if not any(fnmatch.fnmatchcase(c, r) for c in self._called)]
+        if missing and len(missing) == len(prerequisites):
             message = f"{name} runs before {' or '.join(missing)}, which it requires"
             findings.append(Finding("missing_prerequisite", pol.on_requires, step, message, name))
         self._called.append(name)
-        try:
-            key = f"{name}({json.dumps(args, sort_keys=True, default=str)})"
-        except (TypeError, ValueError, RecursionError):
-            key = f"{name}({id(args)})"
+        # the same call twice: same tool, same leaves, in a canonical order (a stable sort by path keeps
+        # list items in sequence while making dict key order irrelevant)
+        key = (name, tuple(sorted(((p, repr(v)) for p, v in leaves), key=_first)))
         self._calls[key] += 1
         self.report_.tool_calls += 1
         unsourced = [_num_or_text(c.value) for c in checks if c.status != "sourced"] + silent
@@ -682,7 +698,9 @@ class RunMonitor:
     ) -> ValueCheck:
         shown = literal if literal is not None else value
         strict = where != "text" and not prose
-        shift_ok = not _BIRTH.search(where)
+        shift_ok = self._birth_cache.get(where)
+        if shift_ok is None:
+            shift_ok = self._birth_cache[where] = not _BIRTH.search(where)
         if rule is None and where != "text" and self.policy.source_rules:
             rule = self.policy.rule_for(where)
         allowed = set(rule) if rule else None
@@ -745,7 +763,8 @@ class RunMonitor:
             except (TypeError, ValueError):
                 return True
             return f.is_integer() and abs(f) <= self.policy.small_ints
-        return str(value).strip().lower() in self.policy.constants
+        constants = self.policy.constants
+        return bool(constants) and str(value).strip().lower() in constants
 
     def _next(self) -> int:
         self.step += 1
@@ -794,6 +813,10 @@ def _read_as_of(text: str) -> dt.date | None:
                 except ValueError:
                     continue
     return None
+
+
+def _first(pair: tuple[str, str]) -> str:
+    return pair[0]
 
 
 def _as_text(x: Any) -> str:

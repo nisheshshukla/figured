@@ -1,6 +1,6 @@
 # figured
 
-**Every number an LLM writes, and every value an agent acts on, traced to where it came from.** Deterministic, zero dependencies, about 35 µs per tool call. Runs on every response and every tool call, not a sample.
+**Every number an LLM writes, and every value an agent acts on, traced to where it came from.** Deterministic, zero dependencies, about 27 µs per tool call, however long the session. Runs on every response and every tool call, not a sample.
 
 Nothing else ships this check. As of October 2026, AWS, Microsoft, OpenAI, Anthropic and Google all gate tool calls, but none of them traces an argument back to its source in the conversation: AWS's session rules can't see user turns, Microsoft's taint labels are experimental and whole-context, and the OpenAI and Anthropic checks are model judges that cost a request and about a second. BI copilots verify the SQL and hand the narrative to a judge. figured does the deterministic version of both, in microseconds, and publishes its false-alarm rates.
 
@@ -61,7 +61,7 @@ Verdicts are `allow`, `warn`, `confirm` (a real value the user never singled out
 
 That last row is the honest one: most agent errors are real values wrongly chosen, or a tool the task never needed, and a provenance check cannot see those. figured is a tripwire for made-up and injected values, with a false-alarm rate low enough to leave on.
 
-Two clean measurements on data figured had never seen, with the protocol committed before each run, and two independent adversarial reviews are in [docs/agent-eval-results.md](docs/agent-eval-results.md). On the second reviewer's 60 hand-written cases, figured allowed 30 of 30 correct calls and flagged 29 of 30 bad ones; a 15-line substring check managed 10 and 22. Per call: 33 µs median, 0.22 ms p99.
+Two clean measurements on data figured had never seen, with the protocol committed before each run, and two independent adversarial reviews are in [docs/agent-eval-results.md](docs/agent-eval-results.md). On the second reviewer's 60 hand-written cases, figured allowed 30 of 30 correct calls and flagged 29 of 30 bad ones; a 15-line substring check managed 10 and 22. Per call: 27 µs median, 0.19 ms p99 on tau-bench; 45 µs with 400 KB of context, 76 µs with 2 MB.
 
 ## Numbers in answers
 

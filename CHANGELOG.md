@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.3
+
+Speed, with identical results: a fingerprint of every report over all 1,980 tau-bench runs is unchanged.
+
+- Identifiers, emails, URLs, and phrases are found through an inverted index of every token in every source, built at ingest, instead of a scan of each source's text per lookup. A lookup is a dict hit plus a check of the few sources that hold the needle's rarest token, so cost no longer grows with the session: `before_call` 45 µs at 400 KB of context (was 246 µs) and 76 µs at 2 MB (was 616 µs).
+- A looked-up value is memoized per run and only the sources added since are scanned again.
+- Pair sums of money fields are indexed at ingest; the same-source sum check is a bucket lookup.
+- The date lookup stops at the newest match; `classify` is cached for strings whose schema hint does not affect the kind; policy pattern matches are cached per tool and argument; the repeat-detection key is built from the leaves already walked instead of a JSON encoding.
+- On tau-bench: `before_call` 27 µs median, 0.19 ms p99 (0.4.2: 33 µs, 0.22 ms). Ingesting a tool result costs about 15% more for the index.
+
 ## 0.4.2
 
 Two independent adversarial reviews of 0.4.1 (`docs/review-0.4.1.md`, with code access; `docs/review-0.4.2-fresh.md`, without) and a version-by-version benchmark comparison. The agent check now beats a 15-line substring baseline on every probe set; the numeric check reports how much a green result means. Plan and status in `docs/plan-0.4.2.md`; all benchmark outputs in `benchmarks/results/v0.4.2/`.

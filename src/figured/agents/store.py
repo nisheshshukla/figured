@@ -91,11 +91,12 @@ PAIR_WINDOW = 60
 MAX_COUNT = 12
 MAX_INDEX_CHARS = 1_000_000
 _JOIN = "\n\x00\n"
+_TOKENS = re.compile(r"[a-z0-9_]+")
 _PLAIN_DIGITS = re.compile(r"(?<![\d.,$€£¥\w-])\d{5,}(?![\d,%\w]|\.\d)")
 
 
 def norm(text: str) -> str:
-    return _WS.sub(" ", text.lower()).strip()
+    return " ".join(text.lower().split())
 
 
 @dataclass(slots=True)
@@ -157,6 +158,11 @@ class SourceStore:
         self._date_index: dict[tuple[int, int], list[tuple[int, int | None]]] = {}
         self._period_index: dict[tuple[int, int], list[tuple[int, int | None]]] = {}
         self._pair_cache: tuple[int, Index | None] | None = None
+        self._tokens: dict[str, list[int]] = {}
+        self._tails: dict[str, list[int]] = {}
+        self._sum_buckets: dict[int, list[tuple[int, int, float]]] = {}
+        self._sums: list[tuple[float, float]] = []
+        self._memo: dict[tuple[str, frozenset[str] | None, bool, bool], tuple[int, int]] = {}
 
     def add(
         self,
@@ -185,6 +191,7 @@ class SourceStore:
             kind, label, step, text, text.lower(), numbers, tainted=tainted, echoes=echo, named=named
         )
         self.sources.append(src)
+        self._index_tokens(src.low, i)
         if tainted:
             src.numbers, src.dates = [], set()
             return
@@ -214,6 +221,17 @@ class SourceStore:
             echoed = {f for e in echo for f in scan_values(e)}
             src.numbers = [v for v in src.numbers if v not in echoed]
             src.money = [[v for v in g if v not in echoed] for g in src.money]
+        for group in src.money:
+            if len(group) <= SUM_FIELDS:
+                for x in range(len(group)):
+                    for y in range(x + 1, len(group)):
+                        total = group[x] + group[y]
+                        if total:
+                            self._sums.append((group[x], group[y]))
+                            entry_s = (i, len(self._sums) - 1, total)
+                            self._sum_buckets.setdefault(
+                                math.floor(math.log(abs(total)) / _BUCKET), []
+                            ).append(entry_s)
         for pos, v in enumerate(src.numbers):
             entry = (i, pos, v)
             a = abs(v)
@@ -344,12 +362,82 @@ class SourceStore:
     def _search(
         self, needle: str, allowed: set[str] | None, *, collapsed: bool = False, tails: bool = False
     ) -> int:
-        """Index of the newest untainted source containing `needle` as a token, or -1."""
-        for i in range(len(self.sources) - 1, -1, -1):
+        """Index of the newest untainted source containing `needle` as a token, or -1.
+
+        All sources are searched as one joined string with `rfind`, newest occurrence first, at C
+        speed, and a hit is mapped back to its source. Memoized per needle: sources are only ever
+        appended, and what makes one count (its text, taint, echoes) is fixed when it is added, so a
+        repeated lookup (the user ID in every call) scans only the sources added since."""
+        key = (needle, None if allowed is None else frozenset(allowed), collapsed, tails)
+        n = len(self.sources)
+        cached = self._memo.get(key)
+        stop = cached[0] if cached is not None else 0
+        found = self._scan(needle, allowed, collapsed, tails, stop) if stop < n else -1
+        if found < 0 and cached is not None:
+            found = cached[1]
+        if len(self._memo) > 20_000:
+            self._memo.clear()
+        self._memo[key] = (n, found)
+        return found
+
+    def _index_tokens(self, low: str, i: int) -> None:
+        tokens = self._tokens
+        tails = self._tails
+        for tok in set(_TOKENS.findall(low)):
+            tokens.setdefault(tok, []).append(i)
+            if "_" in tok:
+                parts = tok.split("_")
+                for j in range(1, len(parts)):
+                    tail = "_".join(parts[j:])
+                    if tail:
+                        tails.setdefault(tail, []).append(i)
+
+    def _scan(self, needle: str, allowed: set[str] | None, collapsed: bool, tails: bool, stop: int) -> int:
+        """The newest source at index >= `stop` containing `needle` as a whole token. Candidate sources
+        come from an inverted index of the alphanumeric tokens in every source, built at ingest, so a
+        lookup costs a dict hit plus a check of the few sources that hold the needle's rarest token,
+        however much text the agent has seen."""
+        if not needle:
+            return -1
+        parts = _TOKENS.findall(needle)
+        if not parts:
+            return self._scan_linear(needle, allowed, collapsed, tails, stop)
+        index = self._tokens
+        candidates: list[int] | None = None
+        for part in parts:
+            hits = index.get(part)
+            if tails:
+                tail_hits = self._tails.get(part)
+                if tail_hits:
+                    hits = sorted(set(hits or ()) | set(tail_hits)) if hits else tail_hits
+            if not hits:
+                return -1
+            if candidates is None or len(hits) < len(candidates):
+                candidates = hits
+        assert candidates is not None
+        sources = self.sources
+        stripped = needle.lstrip("#")
+        for k in reversed(candidates):
+            if k < stop:
+                break
+            src = sources[k]
+            if src.tainted or (allowed is not None and not _allowed(src, allowed)):
+                continue
+            if src.echoes and (needle in src.echoes or stripped in src.echoes):
+                continue
+            if _contains(src.collapsed if collapsed else src.low, needle, tails=tails):
+                return k
+        return -1
+
+    def _scan_linear(
+        self, needle: str, allowed: set[str] | None, collapsed: bool, tails: bool, stop: int
+    ) -> int:
+        stripped = needle.lstrip("#")
+        for i in range(len(self.sources) - 1, stop - 1, -1):
             src = self.sources[i]
             if src.tainted or (allowed is not None and not _allowed(src, allowed)):
                 continue
-            if src.echoes and (needle in src.echoes or needle.lstrip("#") in src.echoes):
+            if src.echoes and (needle in src.echoes or stripped in src.echoes):
                 continue
             if _contains(src.collapsed if collapsed else src.low, needle, tails=tails):
                 return i
@@ -500,7 +588,11 @@ class SourceStore:
             return None
         best: tuple[int, str] | None = None
         for y, m, d in keys:
-            for i, sy in self._date_index.get((m, d), ()):
+            entries = self._date_index.get((m, d), ())
+            for j in range(len(entries) - 1, -1, -1):  # newest first; stop once older than the best
+                i, sy = entries[j]
+                if best is not None and i < best[0]:
+                    break
                 ok, how = self._year_ok(y, sy, m, d)
                 if not ok or (allowed is not None and not _allowed(self.sources[i], allowed)):
                     continue
@@ -544,17 +636,24 @@ class SourceStore:
     # numbers
 
     def _nearest(
-        self, a: float, rel: float, allowed: set[str] | None, sign: int = 0
+        self,
+        a: float,
+        rel: float,
+        allowed: set[str] | None,
+        sign: int = 0,
+        buckets: dict[int, list[tuple[int, int, float]]] | None = None,
     ) -> tuple[int, int, float] | None:
         """Newest number v with |a - |v|| / |v| <= rel. With a sign, v must have that sign."""
+        if buckets is None:
+            buckets = self._buckets
         if a == 0:
-            pool = self._zeros
+            pool = self._zeros if buckets is self._buckets else []
         else:
             lo, hi = a / (1 + rel), a / (1 - rel) if rel < 1 else math.inf
             b_lo = math.floor(math.log(lo) / _BUCKET) - 1
             b_hi = math.floor(math.log(hi) / _BUCKET) + 1 if hi != math.inf else b_lo + 10_000
             pool = []
-            get = self._buckets.get
+            get = buckets.get
             for b in range(b_lo, b_hi + 1):
                 entries = get(b)
                 if entries:
@@ -631,25 +730,44 @@ class SourceStore:
         return self._same_source_sum(value, rel, allowed)
 
     def _same_source_sum(self, value: float, rel: float, allowed: set[str] | None) -> Hit | None:
-        """`value` is two amounts of one money group added: the prices of two items of one order."""
+        """`value` is two amounts of one money group added: the prices of two items of one order. The
+        pair sums are indexed at ingest, so finding the newest source with such a pair is a bucket
+        lookup; the pair itself is then picked within that source."""
         tol = rel * abs(value)
-        for i in range(len(self.sources) - 1, -1, -1):
-            src = self.sources[i]
-            if src.tainted or (allowed is not None and not _allowed(src, allowed)):
-                continue
-            for group in src.money:
-                if len(group) > SUM_FIELDS:
+        a = abs(value)
+        if a == 0:
+            return None
+        lo, hi = a - tol, a + tol
+        if lo <= 0:
+            return None
+        b_lo = math.floor(math.log(lo) / _BUCKET) - 1
+        b_hi = math.floor(math.log(hi) / _BUCKET) + 1
+        newest = -1
+        get = self._sum_buckets.get
+        for b in range(b_lo, b_hi + 1):
+            for i, _, total in get(b) or ():
+                if i <= newest or abs(total - value) > tol:
                     continue
-                nums = sorted(group)
-                lo, hi = 0, len(nums) - 1
-                while lo < hi:
-                    total = nums[lo] + nums[hi]
-                    if abs(total - value) <= tol:
-                        return Hit(src, "derived:sum", f"{nums[lo]:g} + {nums[hi]:g} from the same source")
-                    if total < value:
-                        lo += 1
-                    else:
-                        hi -= 1
+                src = self.sources[i]
+                if src.tainted or (allowed is not None and not _allowed(src, allowed)):
+                    continue
+                newest = i
+        if newest < 0:
+            return None
+        src = self.sources[newest]
+        for group in src.money:
+            if len(group) > SUM_FIELDS:
+                continue
+            nums = sorted(group)
+            lo_i, hi_i = 0, len(nums) - 1
+            while lo_i < hi_i:
+                total = nums[lo_i] + nums[hi_i]
+                if abs(total - value) <= tol:
+                    return Hit(src, "derived:sum", f"{nums[lo_i]:g} + {nums[hi_i]:g} from the same source")
+                if total < value:
+                    lo_i += 1
+                else:
+                    hi_i -= 1
         return None
 
     def _pair_index(self, allowed: set[str] | None) -> Index | None:

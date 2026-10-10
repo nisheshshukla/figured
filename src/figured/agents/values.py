@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import functools
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -136,6 +137,8 @@ def classify(value: Any, hint: dict[str, Any] | None = None) -> Kind | None:
     """The kind of a tool-argument leaf, or None when it is not something that needs a source."""
     if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, str) and (hint is None or not (hint.get("format") or hint.get("enum"))):
+        return _classify_plain(value)  # the hint carries nothing that changes the kind
     if (
         hint
         and isinstance(hint.get("enum"), list)
@@ -152,17 +155,41 @@ def classify(value: Any, hint: dict[str, Any] | None = None) -> Kind | None:
     fmt = (hint or {}).get("format")
     if fmt == "email" or ("@" in s and (EMAIL.fullmatch(s) or _MAILBOX.fullmatch(s))):
         return "email"
-    if fmt in ("uri", "url") or URL.fullmatch(s):
+    if fmt in ("uri", "url") or ("://" in s and URL.fullmatch(s)):
         return "url"
-    if fmt in ("date", "date-time") or is_date_literal(s):
+    if fmt in ("date", "date-time"):
         return "date"
-    if numeric_string(s) is not None:
+    return _classify_text(s)
+
+
+@functools.lru_cache(maxsize=8192)
+def _classify_plain(value: str) -> Kind | None:
+    """`classify` for a string with no schema hint, cached: an agent repeats the same user ID, order
+    ID, and dates across its calls."""
+    s = value.strip()
+    if not s:
+        return None
+    if "@" in s and (EMAIL.fullmatch(s) or _MAILBOX.fullmatch(s)):
+        return "email"
+    if "://" in s and URL.fullmatch(s):
+        return "url"
+    return _classify_text(s)
+
+
+def _classify_text(s: str) -> Kind | None:
+    has_digit = any(map(str.isdigit, s))
+    if not has_digit:
+        return None
+    if len(s) <= 40 and is_date_literal(s):
+        return "date"
+    if s[0] in _NUMERIC_START and numeric_string(s) is not None:
         return "number"
     if len(s) > 80 or len(s.split()) > 6:
         return None
-    if not any(ch.isdigit() for ch in s):
-        return None
-    return "phrase" if any(ch.isspace() for ch in s) else "identifier"
+    return "phrase" if any(map(str.isspace, s)) else "identifier"
+
+
+_NUMERIC_START = frozenset("0123456789+-$€£¥")
 
 
 _NUMERIC = re.compile(r"^[-+]?[$€£¥]?\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$")
@@ -195,6 +222,8 @@ def numeric_string(s: str) -> float | None:
 
 def is_date_literal(s: str) -> bool:
     s = s.strip()
+    if not any(c in s for c in "-/.") and not any(mon in s.lower() for mon in _MONTH3):
+        return False
     if _ISO_DATETIME.match(s):
         return True
     for rx in (_ISO, _SLASH, _YMD_SLASH, _DMY_DOT, _MONTH_DAY, _DAY_MONTH):

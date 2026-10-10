@@ -106,14 +106,14 @@ policy = AgentPolicy.build(
 
 ## Latency
 
-The check that matters for latency is `before_call`, which sits between the model proposing a tool call and the call running. Everything expensive happens earlier, when a message or tool result is added, because that moment is followed by a model call that takes seconds anyway. Numbers are indexed in log-scale buckets, so a tolerance lookup touches a few dozen entries however much the agent has seen; dates are indexed by month and day; identifier search is a C-level substring scan. Measured with `python benchmarks/agent_speed.py` on a laptop:
+The check that matters for latency is `before_call`, which sits between the model proposing a tool call and the call running. Everything expensive happens earlier, when a message or tool result is added, because that moment is followed by a model call that takes seconds anyway. Numbers are indexed in log-scale buckets, so a tolerance lookup touches a few dozen entries however much the agent has seen; dates are indexed by month and day; identifiers are found through an inverted index of every token the agent has seen, built at ingest, so a lookup costs a dict hit plus a check of the few sources holding that token, and a value already looked up is not scanned again. Measured with `python benchmarks/agent_speed.py` on a laptop:
 
 | Session | `before_call` p50 | p99 |
 |---|---|---|
-| tau-bench runs (14,285 calls), with tool schemas | 35 µs | 0.23 ms |
-| 10 tool results, 20 KB seen | 0.04 ms | 0.12 ms |
-| 200 tool results, 400 KB seen | 0.23 ms | 0.43 ms |
-| 20 tool results, 2 MB seen | 0.49 ms | 1.1 ms |
+| tau-bench runs (14,285 calls), with tool schemas | 27 µs | 0.19 ms |
+| 10 tool results, 20 KB seen | 0.03 ms | 0.13 ms |
+| 200 tool results, 400 KB seen | 0.05 ms | 0.14 ms |
+| 20 tool results, 2 MB seen | 0.08 ms | 0.26 ms |
 
 Adding a tool result takes about 0.1 ms at the median on tau-bench, and a system prompt about 1 ms, once per run. Indexing is capped at 1 MB per source. For comparison, gateway hops in published benchmarks add under 10 ms, classifier guardrails 20 to 100 ms, and model-based checks around a second.
 
