@@ -64,7 +64,7 @@ APAC's real average order value is $55. The model wrote a fluent sentence with a
 
 A text-to-SQL answer can state a wrong number. An agent can act on one. `figured.agents` applies the same idea to tool calls: before a call executes, every identifier, email, URL, date, and amount in its arguments is looked up in what the agent has seen, meaning the user's messages, the system prompt, and earlier tool results, plus a short list of arithmetic an agent legitimately does. A value found nowhere is flagged.
 
-That is the whole claim: **values absent from context**. A mistyped or invented ID, a guessed email, a zip code assumed from a city name, a placeholder, an amount that is no price, total, or stated multiple. The check cannot tell which of two real values was the right one. The [measured results](#measured-on-public-agent-runs) show how much of real agent failure that covers, and how much it does not.
+That is the whole claim: **values absent from context**. It fits agents that act on records, where arguments are IDs, accounts, recipients, amounts, and dates that the user or a lookup supplies: support, commerce, banking, booking, messaging. It does not fit generative tools, where the agent is meant to choose the values (drawing coordinates, image sizes, a city's coordinates); on those, measured below, it flags good runs as often as bad ones. A mistyped or invented ID, a guessed email, a zip code assumed from a city name, a placeholder, an amount that is no price, total, or stated multiple. The check cannot tell which of two real values was the right one. The [measured results](#measured-on-public-agent-runs) show how much of real agent failure that covers, and how much it does not.
 
 ```python
 from figured.agents import RunMonitor
@@ -245,7 +245,13 @@ report.ok, report.unsourced, report.findings, report.to_dict()
 - tau2-bench airline and retail: 1.1% of successful runs flagged, against 14.9% for the baseline, and 98% of corrupted values caught.
 - AgentDojo, four new models: 86% of successful injections flagged with source rules.
 
-**On new domains they did not.** In ToolScale's banking and medicine runs, 12.8% of successful runs were flagged, about as often as the substring baseline, mostly for date ranges ("August" → the 1st to the 31st) and date formats figured does not derive or read, and for search parameters agents choose themselves. 0.4.1 fixes those causes: on the same data, now development data, ToolScale's flagged successful runs fall from 12.8% to 1.3%, with corruptions caught unchanged. Whether that holds on new domains needs another clean measurement, which is next. Until then, read the numbers below as what figured does in domains like the ones it was tuned on.
+**On new domains they did not.** In ToolScale's banking and medicine runs, 12.8% of successful runs were flagged, about as often as the substring baseline, mostly for date ranges ("August" → the 1st to the 31st) and date formats figured does not derive or read, and for search parameters agents choose themselves. 0.4.1 fixes those causes: on the same data, now development data, ToolScale's flagged successful runs fall from 12.8% to 1.3%, with corruptions caught unchanged. A second clean measurement, on 3,000 runs against 495 real MCP servers ([protocol](docs/clean-eval-2-protocol.md), [results](docs/clean-eval-2-results.md)), failed its claim:
+
+- 41.9% of good runs were flagged, about as often as poor runs and as the substring baseline.
+- Of 40 sampled flags, 38 were values the agent is meant to choose itself: drawing coordinates, image sizes, a city's coordinates.
+- Corruptions caught: 95.3%.
+
+So the scope is records, not open-ended tools. The numbers below are for agents of that kind.
 
 
 Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics, and is replayed with its tools' schemas, as an agent would be given them. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).

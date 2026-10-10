@@ -1,0 +1,77 @@
+
+######## Kimi-K2: 1000 runs, unparsable calls 0
+
+== Toucan Kimi-K2 good: 541 successful, 0 failed runs, 5.6 s
+   successful runs flagged   figured  42.3%  baseline  39.9%
+   failed runs flagged       figured   n/a  baseline   n/a
+   corruptions caught        figured 353/373  baseline 328
+   substitutions caught      figured 90/301  baseline 8
+   calls to unknown tools    successful runs 39  failed runs 0
+
+== Toucan Kimi-K2 middle: 0 successful, 276 failed runs, 1.7 s
+   successful runs flagged   figured   n/a  baseline   n/a
+   failed runs flagged       figured  58.7%  baseline  57.6%
+   corruptions caught        figured 0/0  baseline 0
+   substitutions caught      figured 0/0  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 53
+
+== Toucan Kimi-K2 poor: 0 successful, 183 failed runs, 1.2 s
+   unreadable transcripts: 1  e.g. ['Kimi-K2:1f8ac61c-f918-51b5-b306-335b1804d19f: OverflowError: cannot convert float infinity to integer']
+   successful runs flagged   figured   n/a  baseline   n/a
+   failed runs flagged       figured  50.8%  baseline  45.9%
+   corruptions caught        figured 0/0  baseline 0
+   substitutions caught      figured 0/0  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 63
+
+######## Qwen3: 1000 runs, unparsable calls 0
+
+== Toucan Qwen3 good: 210 successful, 0 failed runs, 3.4 s
+   unreadable transcripts: 2  e.g. ['Qwen3:0610b4cb-55a6-510b-a917-894dc5adb577: OverflowError: cannot convert float infinity to integer', 'Qwen3:78e2c760-0b6d-536d-80ca-d94deff1d2b6: OverflowError: cannot convert float infinity to integer']
+   successful runs flagged   figured  48.6%  baseline  43.8%
+   failed runs flagged       figured   n/a  baseline   n/a
+   corruptions caught        figured 176/179  baseline 162
+   substitutions caught      figured 40/134  baseline 3
+   calls to unknown tools    successful runs 2  failed runs 0
+
+== Toucan Qwen3 middle: 0 successful, 339 failed runs, 2.9 s
+   unreadable transcripts: 4  e.g. ['Qwen3:c719a77e-e881-56d3-b157-84fc505cbee8: OverflowError: cannot convert float infinity to integer', 'Qwen3:e58f0ea1-3223-577d-84df-cb98449d1b5d: OverflowError: cannot convert float infinity to integer']
+   successful runs flagged   figured   n/a  baseline   n/a
+   failed runs flagged       figured  53.7%  baseline  49.9%
+   corruptions caught        figured 0/0  baseline 0
+   substitutions caught      figured 0/0  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 40
+
+== Toucan Qwen3 poor: 0 successful, 451 failed runs, 3.5 s
+   unreadable transcripts: 3  e.g. ['Qwen3:a520efb6-51c1-5774-8390-18017f6e4b99: OverflowError: cannot convert float infinity to integer', 'Qwen3:4f85013f-d695-53a3-afc3-50a715eec046: OverflowError: cannot convert float infinity to integer']
+   successful runs flagged   figured   n/a  baseline   n/a
+   failed runs flagged       figured  46.3%  baseline  42.6%
+   corruptions caught        figured 0/0  baseline 0
+   substitutions caught      figured 0/0  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 22
+
+######## OSS: 1000 runs, unparsable calls 0
+
+== Toucan OSS good: 854 successful, 0 failed runs, 16.2 s
+   unreadable transcripts: 8  e.g. ['OSS:49a708ea-8582-5441-b0ba-4862caf81d0d: OverflowError: cannot convert float infinity to integer', 'OSS:a77232e7-9195-5088-b9be-ccb444c87589: OverflowError: cannot convert float infinity to integer']
+   successful runs flagged   figured  40.0%  baseline  39.6%
+   failed runs flagged       figured   n/a  baseline   n/a
+   corruptions caught        figured 584/616  baseline 529
+   substitutions caught      figured 83/439  baseline 5
+   calls to unknown tools    successful runs 96  failed runs 0
+
+== Toucan OSS middle: 0 successful, 95 failed runs, 0.6 s
+   successful runs flagged   figured   n/a  baseline   n/a
+   failed runs flagged       figured  35.8%  baseline  38.9%
+   corruptions caught        figured 0/0  baseline 0
+   substitutions caught      figured 0/0  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 2
+
+== Toucan OSS poor: 0 successful, 51 failed runs, 0.2 s
+   unreadable transcripts: 1  e.g. ['OSS:c3d2769b-883f-5863-b28e-31736c323bc7: OverflowError: cannot convert float infinity to integer']
+   successful runs flagged   figured   n/a  baseline   n/a
+   failed runs flagged       figured  27.5%  baseline  37.3%
+   corruptions caught        figured 0/0  baseline 0
+   substitutions caught      figured 0/0  baseline 0
+   calls to unknown tools    successful runs 0  failed runs 18
+
+== speed: 10565 calls, before_call p50 38.7 µs, p99 990.9 µs

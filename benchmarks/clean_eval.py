@@ -395,23 +395,28 @@ def speed(runs: list[ae.Run]) -> dict[str, float]:
     us: list[float] = []
     for r in runs:
         m = RunMonitor(ae.POLICY, tools=r.tools)
-        for kind, ev in events(r.messages):
-            if kind == "system":
-                m.system(ev["text"])
-            elif kind == "user":
-                m.user(ev["text"])
-            elif kind == "assistant":
-                m.assistant(ev["text"])
-            elif kind == "result":
-                m.tool_result(str(ev["name"]), ev["output"], ev.get("id"))
-            elif kind == "call":
-                t = time.perf_counter()
-                m.before_call(str(ev["name"]), ev["args"], ev.get("id"))
-                us.append((time.perf_counter() - t) * 1e6)
+        times: list[float] = []
+        try:
+            for kind, ev in events(r.messages):
+                if kind == "system":
+                    m.system(ev["text"])
+                elif kind == "user":
+                    m.user(ev["text"])
+                elif kind == "assistant":
+                    m.assistant(ev["text"])
+                elif kind == "result":
+                    m.tool_result(str(ev["name"]), ev["output"], ev.get("id"))
+                elif kind == "call":
+                    t = time.perf_counter()
+                    m.before_call(str(ev["name"]), ev["args"], ev.get("id"))
+                    times.append((time.perf_counter() - t) * 1e6)
+        except Exception:  # a run figured cannot read is counted in evaluate(); it is left out of timing
+            continue
+        us += times
     us.sort()
     res = {"calls": len(us), "p50_us": us[len(us) // 2], "p99_us": us[int(len(us) * 0.99)]}
     print(
-        f"\n== speed on ToolScale: {res['calls']} calls, before_call p50 {res['p50_us']:.1f} µs, p99 {res['p99_us']:.1f} µs"
+        f"\n== speed: {res['calls']} calls, before_call p50 {res['p50_us']:.1f} µs, p99 {res['p99_us']:.1f} µs"
     )
     return res
 
