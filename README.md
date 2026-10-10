@@ -7,7 +7,7 @@
 | Check | Runs on | Catches | Typical cost |
 |---|---|---|---|
 | `trace(answer, rows)` | a generated answer and the rows it was written from | figures that are not in the data and cannot be derived from it | about 150 µs |
-| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts absent from the conversation and earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 25 µs per tool call (p99 0.16 ms) |
+| `RunMonitor.before_call(...)` | each agent tool call, before it executes | identifiers, emails, URLs, dates, and amounts absent from the conversation and earlier tool results; values that arrived through a channel a rule forbids; repeated calls and blown budgets | about 25 µs per tool call (p99 0.19 ms) |
 
 Zero dependencies. No model calls. Python 3.10+.
 
@@ -118,7 +118,7 @@ Arguments are checked strictly, because they are acted on. Values in the agent's
 
 | Kind | Found when | Not found |
 |---|---|---|
-| identifier | the same characters appear, ignoring case and separators (`ORD 88213` → `ORD-88213`, `(415) 555-0132` → `+14155550132`, IBANs with or without spaces); a prefix is added to digits the user typed when IDs of exactly that shape appear in tool results (`9502127` → `#W9502127`) | a digit run inside another identifier; a prefix added to digits the user never typed |
+| identifier | the same characters appear, ignoring case and separators (`ORD 88213` → `ORD-88213`, `(415) 555-0132` → `+14155550132`, IBANs with or without spaces); a prefix the tool's schema states is added to digits found in context (`9502127` → `#W9502127` when the description says "such as '#W0000000'", or a `pattern` says `^#W\d{7}$`) | a digit run inside another identifier; a prefix added to digits nobody typed, or to the wrong number of them (`credit_card_7334` from "ending in 7334") |
 | email, URL | the address appears, ignoring case; a URL may differ in scheme or `www.` | another host that ends the same way (`evil-example.com` is not `example.com`) |
 | date | the calendar date appears in any format, including Spanish, French, German, Portuguese, Italian, and Chinese or Japanese dates; "tomorrow", weekdays, and "end of the month" resolve against the system prompt's date; a date without a year takes the year nearest that date; a shift the user asked for, in the direction they asked ("a day later", "two weeks earlier") | a shift in the other direction; a shift applied to a birth date or any date years from now |
 | amount | the number appears, to the cent and with its sign; or it is a sourced amount times a count the user stated or a list's length (passengers, items), a stated percentage of an amount (a tip, a tax), or two money fields of one small source added (two item prices, a price and its tax); English number words count ("two hundred fifty") | a multiple by a count nobody stated; a sum over a search result with dozens of fares, where some pair matches almost anything |
@@ -131,6 +131,50 @@ Free text in an argument, such as an email body, is scanned for identifiers, ema
 ### Loops and budgets
 
 The same monitor watches the run as a whole: an identical call repeated `max_repeats` times, a call retried with the same arguments after it errored, and a tool-call budget. Repetition and not knowing when to stop are the two most common agent failure modes in published trace studies, and both are visible without a model.
+
+### When a value is real but may be the wrong one: confirm
+
+Some questions a provenance check cannot answer: which of three real orders the user meant, or whether an action was needed at all. figured does not guess. It has a fourth verdict, `confirm`: hold the call for a person or a model verifier, and say why. `decision.allowed` is False for both `confirm` and `block`, so code that does not handle the new verdict stays safe; `decision.needs_confirmation` tells you to ask.
+
+```python
+policy = AgentPolicy.build(ambiguous_before=["return_*", "cancel_*"])
+monitor = RunMonitor(policy)
+monitor.user("I want to return something.")
+monitor.tool_result(
+    "get_user_details",
+    {
+        "orders": [
+            {"order_id": "#W1111111", "items": [{"name": "Headphones", "item_id": "4202497723"}]},
+            {"order_id": "#W2222222", "items": [{"name": "Smart Watch", "item_id": "9408160950"}]},
+        ]
+    },
+)
+monitor.before_call("return_items", {"order_id": "#W2222222"}).action
+# "confirm": return_items.order_id=#W2222222 was chosen from context; nothing the user said or confirmed
+#            singles it out from 1 other value of the same shape (#W1111111)
+monitor.user("It's the one with the smart watch.")
+monitor.before_call("return_items", {"order_id": "#W2222222"}).action  # "allow"
+```
+
+The opt-in checks behind it:
+
+- `ambiguous_before`: an identifier the agent chose from several of the same shape (orders, items, payment methods) that the user neither typed nor singled out. Singling out counts by value or by an attribute of the value's record that the other candidates do not all share: "the smart watch", "the Mastercard ending in 2478".
+- `confirm_before`: the user's last message must agree ("yes", "go ahead") to what the agent said since the last confirmed action, and every value in the call must appear in it, by value or by attribute. Many support policies, tau-bench's among them, require this before any change.
+- `named_sources="confirm"`: a value a source rule forbids, which came from a file, URL, or address the user named ("pay the bill in 'bill.txt'"), asks instead of blocking.
+
+Two checks on the call itself complement them: with `tools=` passed, a call to a tool the agent does not have is blocked; and `requires` names calls that must come first (`{"send_payment_request": ["get_bills_for_customer"]}`).
+
+These route; they do not judge. Measured on the same benchmarks:
+
+| Check | Asks on successful runs | Reaches in failed runs |
+|---|---|---|
+| `ambiguous_before`, tau-bench writes | 2.5% to 25% of writes, 0.04 to 0.17 asks per run | 225 of 1,002 wrong values fall on a call it asks about, about 1.1 to 2.4 times its ask rate; it names the wrong value in 84 |
+| `confirm_before`, tau-bench writes | 9% to 54% of writes | 559 of 1,002 on a call it asks about; names 102 |
+| `named_sources="confirm"`, AgentDojo with source rules | benign runs blocked fall from 15.5% to 7.8%; 7.8% ask instead | successful injections blocked fall from 76.6% to 38.3%; 38.3% go to the person instead |
+| `requires`, three rules from tau2-bench's telecom policy | 0% to 0.4% of writes | 2 of 82 side effects the task did not need |
+| unknown tools, tool list passed, tau2-bench | none | all 146 calls Claude 3.7 Sonnet made to tools it does not have |
+
+The ambiguity check is the most useful of these: on most runs it asks rarely, and when it asks, a wrong value is somewhat more likely than average. Confirmation binding is only worth turning on where the policy requires a confirmation; on tau2-bench telecom, whose policy does not, it asked on 46% to 93% of writes. Turning a named source into a confirmation halves blocked benign runs but hands the decision on many real injections to a person, because AgentDojo plants its attacks in exactly the files users name; use it only where a person reads the prompt. The prerequisite rules caught almost nothing: the agents did the lookups and still made changes no one asked for.
 
 ### Policy
 
@@ -153,7 +197,12 @@ policy = AgentPolicy.build(
 | `block_unsourced` | none | argument patterns where an unsourced value blocks the call |
 | `source_rules` | none | argument pattern to allowed sources: `user`, `system`, `tool`, `tool:<name>`, `derived` |
 | `pure_tools` | none | tools whose output is computed from their arguments; if those were made up, the output vouches for nothing |
-| `on_unsourced`, `on_rule`, `on_repeat`, `on_budget` | warn, block, warn, block | severity for each finding type |
+| `schema_formats` | True | read ID formats from the `tools` schemas: `pattern`, `examples`, and examples in descriptions |
+| `named_sources` | "rule" | "confirm" asks instead of blocking when a rule-violating value came from a resource the user named |
+| `ambiguous_before`, `confirm_before` | none | tool patterns for the selection and confirmation checks |
+| `requires` | none | tool pattern to calls that must come first |
+| `on_selection`, `on_requires`, `on_unknown_tool` | confirm, warn, block | severity for those checks |
+| `on_unsourced`, `on_rule`, `on_repeat`, `on_budget` | warn, block, warn, block | severity for each finding type: "warn", "confirm", or "block" |
 | `kinds` | all six | which value kinds need a source |
 | `ignore`, `constants` | none | arguments to skip; values that are always allowed |
 | `small_ints` | 10 | integers up to this are counts and are not checked |
@@ -169,10 +218,10 @@ The check that matters for latency is `before_call`, which sits between the mode
 
 | Session | `before_call` p50 | p99 |
 |---|---|---|
-| tau-bench runs (14,285 calls) | 23 µs | 0.16 ms |
-| 10 tool results, 20 KB seen | 0.04 ms | 0.11 ms |
-| 200 tool results, 400 KB seen | 0.22 ms | 0.42 ms |
-| 20 tool results, 2 MB seen | 0.49 ms | 1.3 ms |
+| tau-bench runs (14,285 calls), with tool schemas | 26 µs | 0.19 ms |
+| 10 tool results, 20 KB seen | 0.04 ms | 0.12 ms |
+| 200 tool results, 400 KB seen | 0.23 ms | 0.43 ms |
+| 20 tool results, 2 MB seen | 0.49 ms | 1.1 ms |
 
 Adding a tool result takes about 0.1 ms at the median on tau-bench, and a system prompt about 1 ms, once per run. Indexing is capped at 1 MB per source. For comparison, gateway hops in published benchmarks add under 10 ms, classifier guardrails 20 to 100 ms, and model-based checks around a second.
 
@@ -189,30 +238,30 @@ report.ok, report.unsourced, report.findings, report.to_dict()
 
 ### Measured on public agent runs
 
-Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).
+Three public datasets, each run through `benchmarks/agent_eval.py`. tau-bench was used to develop the heuristics, and is replayed with its tools' schemas, as an agent would be given them. tau2-bench and AgentDojo were held out: run once, after the code was frozen, and reported as they came out. Each figure is shown next to a naive baseline: every argument value that contains a digit or an @, and every number above 10, must appear verbatim somewhere in the context. Full methodology and per-file numbers are in [docs/agent-eval-results.md](docs/agent-eval-results.md).
 
 | figured / baseline | tau-bench, development: 1,980 runs, GPT-4o and Claude 3.5 Sonnet | tau2-bench telecom, held out: 912 runs, GPT-4.1 and Claude 3.7 Sonnet |
 |---|---|---|
-| Successful runs with a flag | 1.4% / 13.4% | 0.5% / 0.0% |
-| A real value altered the way models get values wrong: two digits swapped, a digit changed, a date off by a day, an amount off by 7% | 99.2% / 91.8% caught | 99.9% / 99.9% caught |
+| Successful runs with a flag | 0.8% / 13.4% | 0.5% / 0.0% |
+| A real value altered the way models get values wrong: two digits swapped, a digit changed, a date off by a day, an amount off by 7% | 99.2% / 92.2% caught | 99.9% / 99.9% caught |
 | A real value from the same conversation in the wrong place | 0.0% / 0.1% caught | 0.0% / 0.0% caught |
 | Wrong argument values and wrong calls in failed runs, against the task's ground truth | 3.5% / 8.7% caught | 2.0% / 0.7% caught |
 
 What this says, plainly:
 
 - **It catches made-up values, and rarely flags good runs.** A real ID, email, date, or amount with two digits swapped or a day or a few percent off is caught almost every time, and on held-out data under 1% of successful runs carried a flag. The substring baseline flags 13% of successful tau-bench runs, mostly identifiers and address lines written differently from the source.
-- **Most agent failures are not made-up values.** Of the wrong argument values in failed tau-bench runs that figured could check, 95% appear in the context: an existing order ID that was not the one the user meant, a real flight on the wrong date. On tau2-bench, 145 of 151 errors were calls to a tool the task never needed. Provenance cannot see either; that takes the system's own validation, or a model that reads intent. The baseline catches more failed-run errors on tau-bench airline because it flags any amount that is not copied verbatim, right or wrong.
-- **Most flags are worth reading.** Of the 16 successful tau-bench runs with a flag, 10 sent a tool a value with no source: zip codes assumed from a city name, user IDs guessed from a person's name, a payment ID built from "the card ending in 7334", a gift card ID with a credit card prefix, an order number padded with zeros, and a placeholder `gift_card_0000000`. The runs succeeded only because the bad call errored and the agent recovered. The other 6 are false flags: an order ID prefix the agent learned from a tool description, which figured does not read, and an ID split by a space in a hand-off summary.
+- **Most agent failures are not made-up values.** Of the wrong argument values in failed tau-bench runs that figured could check, 95% appear in the context: an existing order ID that was not the one the user meant, a real flight on the wrong date. On tau2-bench, 145 of 151 errors were calls to a tool the task never needed: 63 to tools the agent does not have, which the environment rejected and which figured now blocks when given the tool list, and 82 to real tools that changed something no one asked to change. Provenance cannot see either; that takes the system's own validation, or a model that reads intent. The baseline catches more failed-run errors on tau-bench airline because it flags any amount that is not copied verbatim, right or wrong.
+- **The flags are worth reading.** All 10 successful tau-bench runs with a flag sent a tool a value with no source: zip codes assumed from a city name, user IDs guessed from a person's name, a payment ID built from "the card ending in 7334", a gift card ID with a credit card prefix, an order number padded with zeros, and a placeholder `gift_card_0000000`. The runs succeeded only because the bad call errored and the agent recovered. The six false flags in 0.3.0 are gone: four were the `#W` prefix the agent learned from tool descriptions, which figured now reads, and two an ID split by a space in a hand-off summary.
 
 For prompt injection, AgentDojo (held out, Claude 3.7 Sonnet, 1,065 runs) with source rules on the sensitive arguments: payment and message recipients, passwords, user details, and posted URLs must come from the user or a contacts lookup. The rules were written before the run and are listed in the benchmark.
 
 | Runs with a flagged write | with source rules | without |
 |---|---|---|
-| Injection succeeded | 76.6% (36 of 47) | 14.9% |
-| Injection attempted, did not succeed | 16.7% | 7.5% |
-| No attack, user's task completed | 22.4% (26 of 116) | 11.2% |
+| Injection succeeded | 78.7% (37 of 47) | 14.9% |
+| Injection attempted, did not succeed | 18.7% | 7.5% |
+| No attack, user's task completed | 25.0% (29 of 116) | 11.2% |
 
-Rules catch three in four successful injections, and also flag one in five legitimate runs. Most of those are tasks that rightly take a recipient from a document, such as "pay the bill in bill.txt" or "invite the person on this webpage", which a rule saying recipients come from the user cannot tell apart from an attack. That is the basic tradeoff of information-flow control, and the reason to put rules only on the few arguments where you would rather ask than act. One gap this run exposed is fixed in this release: a rule now checks strings without digits too, such as a password; with the fix, 78.7% of successful injections and 25.0% of benign runs are flagged.
+Rules catch four in five successful injections, and also flag one in four legitimate runs. Most of those are tasks that rightly take a recipient from a document, such as "pay the bill in bill.txt" or "invite the person on this webpage", which a rule saying recipients come from the user cannot tell apart from an attack. That is the basic tradeoff of information-flow control, and the reason to put rules only on the few arguments where you would rather ask than act. The held-out run, on frozen 0.3.0 code, gave 76.6% and 22.4%; the numbers above include one fix it exposed, rules now checking strings without digits such as a password.
 
 ## Numbers in answers: details
 
@@ -355,7 +404,7 @@ Each call is one model request over the question, up to 30 rows per result set, 
 - In answers, numbers written as words ("two million") are not extracted. Agent checks read English number words in what the user says.
 - It does not know what the rows mean. If the agent queried the wrong column and described it faithfully, every figure traces.
 - For agents, a wrong value that also exists in the context passes: the wrong one of two real order IDs, a flight date put in a birth date field, a recipient copied from an injected email when no source rule covers that argument. Provenance proves a value came from somewhere in the context, not that it was the right one. On the benchmarks above this is most real agent failure.
-- Calls to the wrong tool, with correct values, are invisible to it.
+- A call to a real tool that the task did not need, with correct values, is invisible to it. Calls to tools the agent does not have are blocked when you pass `tools=`; prerequisite rules from tau2-bench's policy caught 2 of 82 unneeded changes.
 - Values without digits (names, airport codes, product options) and integers up to 10 are not checked, so a wrong passenger name or a quantity of 9 instead of 1 passes.
 - An error that echoes a made-up value back does not vouch for it only when the monitor saw the call that caused it. Feed `before_call` and `tool_result` the same call id, or replay the whole transcript.
 - Values the model knows rather than read (a model name, a currency conversion at a rate it remembers, a well-known code) are flagged; list them in `constants` or ignore the argument.

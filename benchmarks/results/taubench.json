@@ -8,7 +8,7 @@
     "runs_fail": 182,
     "flagged_fail": 3,
     "base_flagged_fail": 13,
-    "seconds": 5.6,
+    "seconds": 6.2,
     "wrong": {
       "identifier": 131,
       "write to a tool the task never required": 46,
@@ -76,7 +76,7 @@
     "runs_ok": 84,
     "flagged_ok": 4,
     "base_flagged_ok": 12,
-    "seconds": 1.6,
+    "seconds": 1.8,
     "wrong": {
       "not checked (no digits, names, enums, small counts)": 67,
       "number": 42,
@@ -154,13 +154,13 @@
   {
     "label": "sonnet-35-new-retail",
     "runs_ok": 637,
-    "flagged_ok": 8,
+    "flagged_ok": 3,
     "base_flagged_ok": 78,
     "calls": 7086,
     "runs_fail": 283,
-    "flagged_fail": 5,
+    "flagged_fail": 4,
     "base_flagged_fail": 15,
-    "seconds": 17.4,
+    "seconds": 19.1,
     "wrong": {
       "identifier": 159,
       "phrase": 18,
@@ -183,39 +183,34 @@
       "identifier": [
         1733,
         1732,
-        1603
+        1615
       ],
       "email": [
-        118,
-        118,
-        118
+        119,
+        119,
+        119
       ],
       "phrase": [
-        55,
-        55,
-        55
+        54,
+        54,
+        54
       ]
     },
     "substitutions": {
       "identifier": [
-        1134,
+        1130,
         0,
         0
       ],
       "email": [
-        29,
+        27,
         0,
         0
       ]
     },
     "examples": {
       "flag_ok": [
-        "sonnet-35-new-retail:47/2 get_order_details.order_id = '#W9502126'",
-        "sonnet-35-new-retail:45/4 get_order_details.order_id = '#W9502127'",
-        "sonnet-35-new-retail:46/4 get_order_details.order_id = '#W9502126'",
-        "sonnet-35-new-retail:106/4 transfer_to_human_agents.summary = 'card_7245904'",
         "sonnet-35-new-retail:23/5 find_user_id_by_name_zip.zip = '98101'",
-        "sonnet-35-new-retail:46/6 get_order_details.order_id = '#W9502126'",
         "sonnet-35-new-retail:8/7 get_order_details.order_id = '#W0028236'",
         "sonnet-35-new-retail:65/7 find_user_id_by_name_zip.zip = '95112'"
       ],
@@ -232,9 +227,9 @@
     "base_flagged_fail": 88,
     "calls": 2761,
     "runs_ok": 184,
-    "flagged_ok": 3,
+    "flagged_ok": 2,
     "base_flagged_ok": 29,
-    "seconds": 5.3,
+    "seconds": 5.8,
     "wrong": {
       "not checked (no digits, names, enums, small counts)": 73,
       "identifier": 225,
@@ -258,14 +253,14 @@
     },
     "corruptions": {
       "identifier": [
-        390,
-        390,
-        361
+        393,
+        393,
+        366
       ],
       "date": [
-        74,
-        56,
-        36
+        72,
+        54,
+        35
       ],
       "number": [
         3,
@@ -280,7 +275,7 @@
         0
       ],
       "date": [
-        126,
+        123,
         0,
         2
       ],
@@ -305,8 +300,7 @@
       ],
       "flag_ok": [
         "sonnet-35-new-airline:1/4 get_user_details.user_id = 'olivia_gonzalez_902'",
-        "sonnet-35-new-airline:1/5 get_user_details.user_id = 'olivia_gonzalez_631'",
-        "sonnet-35-new-airline:42/5 transfer_to_human_agents.summary = 'card_2550356'"
+        "sonnet-35-new-airline:1/5 get_user_details.user_id = 'olivia_gonzalez_631'"
       ]
     }
   }

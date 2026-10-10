@@ -8,7 +8,7 @@
     "runs_ok": 156,
     "flagged_ok": 0,
     "base_flagged_ok": 0,
-    "seconds": 14.4,
+    "seconds": 14.8,
     "wrong": {
       "write to a tool the task never required": 55,
       "identifier": 3,
@@ -49,7 +49,7 @@
     "runs_ok": 225,
     "flagged_ok": 2,
     "base_flagged_ok": 0,
-    "seconds": 21.4,
+    "seconds": 21.8,
     "wrong": {
       "write to a tool the task never required": 90,
       "not checked (no digits, names, enums, small counts)": 1,

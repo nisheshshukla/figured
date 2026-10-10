@@ -27,7 +27,8 @@ from figured.policy import Policy
 from .store import Hit, SourceStore
 from .values import Kind, classify, extract_text_values, numeric_string, parse_dates
 
-Severity = Literal["warn", "block"]
+Severity = Literal["warn", "confirm", "block"]
+Action = Literal["allow", "warn", "confirm", "block"]
 _ERROR = re.compile(
     r'^\s*(?:error|exception|traceback)\b|"error"\s*:(?!\s*(?:null\b|false\b|""|\[\]|\{\}|0\b))',
     re.IGNORECASE,
@@ -44,6 +45,24 @@ _ID_NAME = re.compile(
 _MAX_DEPTH = 64
 _TOO_DEEP = object()
 _DIGIT_RUN = re.compile(r"(?<![\w.,$])\d{6,}(?![\w.,])")
+_AFFIRM = re.compile(
+    r"\b(?:yes|yeah|yep|sure|ok(?:ay)?|alright|confirm(?:ed)?|go ahead|proceed|sounds good|"
+    r"that'?s (?:right|correct|fine)|that is (?:right|correct|fine)|please do|do it|absolutely|"
+    r"let'?s (?:go|do|proceed))\b",
+    re.IGNORECASE,
+)
+_NEGATE = re.compile(r"^\W*(?:no|nope|wait|stop|don'?t|do not|cancel)\b", re.IGNORECASE)
+_NAMED = re.compile(
+    r"[\"'`\u201c\u2018]([^\"'`\u201d\u2019\n]{2,120})[\"'`\u201d\u2019]"
+    r"|(?<![\w@./-])((?:https?://)?(?:[\w-]+\.)+[a-z]{2,}(?:/[^\s\"'<>]*)?)"
+    r"|(?<![\w./-])([\w-]+(?:/[\w.-]+)*\.[a-z][a-z0-9]{0,4})\b"
+    r"|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)",
+    re.IGNORECASE,
+)
+_DESC_CUE = re.compile(r"such as|e\.g\.|for example|for instance|example|like|format", re.IGNORECASE)
+_QUOTED = re.compile(r"['\"`]([^'\"`\s]{3,40})['\"`]")
+_ONE_DIGIT_RUN = re.compile(r"^(\D*?)(\d{4,})(\D*)$")
+_PATTERN_SHAPE = re.compile(r"^\^?([^\\\[\](){}.*+?|^$]*)\\d\{(\d+)\}([^\\\[\](){}.*+?|^$]*)\$?$")
 
 
 @dataclass(frozen=True)
@@ -74,6 +93,26 @@ class AgentPolicy:
     date_shift_days: the largest date move a user can ask for ("two weeks later") that still counts
         as derived. 0 turns shifts off.
     rel_tolerance: for numbers in the agent's text, as in figured.trace. Argument amounts are exact.
+    schema_formats: read ID formats from tool schemas: a `pattern` such as `^#W\\d{7}$`, or examples
+        in a parameter's description ("the order id, such as '#W0000000'"). An agent that adds the
+        prefix to digits the user typed is then not flagged. Only literal prefixes and suffixes are
+        added; the digits must still be in context, as a whole token, and the count must match.
+    named_sources: "confirm" turns a source-rule violation into a confirmation when the value came
+        from a resource the user named (a file in quotes, a URL, an address): "pay the bill in
+        'bill.txt'" legitimately takes the recipient from the file, and an injection in that file
+        looks the same, so a person decides. Use it only where a person reads the confirmation; on
+        AgentDojo it halves blocked benign runs and sends 38% of successful injections to that person
+        instead of blocking them. "rule" (the default) keeps on_rule.
+    confirm_before: tool patterns whose calls need the user's yes to the values: the user's last
+        message must confirm the agent's last message, and every value checked in the call must
+        appear in it. tau-bench's and many support policies require this before any change.
+    ambiguous_before: tool patterns where an identifier the user neither typed nor confirmed, with
+        other values of the same shape in context (three order IDs, two payment methods), is flagged
+        as an ambiguous selection: a choice a person or a verifier should check.
+    requires: tool pattern -> tool patterns at least one of which must have run earlier in the run
+        ("cancel_reservation" requires "get_reservation_details").
+    on_selection / on_requires: severity for the three checks above.
+    on_unknown_tool: severity for a call to a tool that is not among the `tools` the monitor was given.
     """
 
     kinds: frozenset[str] = frozenset({"identifier", "email", "url", "date", "number", "phrase"})
@@ -94,6 +133,14 @@ class AgentPolicy:
     as_of: dt.date | Literal["auto"] | None = "auto"
     date_shift_days: int = 31
     rel_tolerance: float = 0.015
+    schema_formats: bool = True
+    named_sources: Literal["confirm", "rule"] = "rule"
+    confirm_before: tuple[str, ...] = ()
+    ambiguous_before: tuple[str, ...] = ()
+    requires: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    on_selection: Severity = "confirm"
+    on_requires: Severity = "warn"
+    on_unknown_tool: Severity = "block"
 
     @classmethod
     def build(cls, source_rules: dict[str, set[str] | list[str]] | None = None, **kw: Any) -> AgentPolicy:
@@ -101,9 +148,11 @@ class AgentPolicy:
         for name in ("kinds", "constants"):
             if name in kw:
                 kw[name] = frozenset(x.lower() if name == "constants" else x for x in kw[name])
-        for name in ("ignore", "block_unsourced", "pure_tools"):
+        for name in ("ignore", "block_unsourced", "pure_tools", "confirm_before", "ambiguous_before"):
             if name in kw:
                 kw[name] = tuple(kw[name])
+        if isinstance(kw.get("requires"), dict):
+            kw["requires"] = tuple((k, tuple(v)) for k, v in kw["requires"].items())
         return cls(source_rules=rules, **kw)
 
     def rule_for(self, where: str) -> frozenset[str] | None:
@@ -120,6 +169,15 @@ class AgentPolicy:
 
     def pure(self, tool: str) -> bool:
         return any(fnmatch.fnmatchcase(tool, p) for p in self.pure_tools)
+
+    def needs_confirmation(self, tool: str) -> bool:
+        return any(fnmatch.fnmatchcase(tool, p) for p in self.confirm_before)
+
+    def checks_ambiguity(self, tool: str) -> bool:
+        return any(fnmatch.fnmatchcase(tool, p) for p in self.ambiguous_before)
+
+    def prerequisites(self, tool: str) -> tuple[str, ...]:
+        return tuple(r for pattern, reqs in self.requires if fnmatch.fnmatchcase(tool, pattern) for r in reqs)
 
 
 @dataclass(frozen=True)
@@ -152,7 +210,18 @@ class ValueCheck:
 
 @dataclass(frozen=True)
 class Finding:
-    type: Literal["unsourced", "source_rule", "unchecked", "repeated_call", "retried_error", "over_budget"]
+    type: Literal[
+        "unsourced",
+        "source_rule",
+        "unchecked",
+        "unconfirmed",
+        "ambiguous_selection",
+        "missing_prerequisite",
+        "unknown_tool",
+        "repeated_call",
+        "retried_error",
+        "over_budget",
+    ]
     severity: Severity
     step: int
     message: str
@@ -172,13 +241,19 @@ class Finding:
 class Decision:
     """What the monitor says about a tool call before it runs."""
 
-    action: Literal["allow", "warn", "block"]
+    action: Action
     findings: tuple[Finding, ...]
     checks: tuple[ValueCheck, ...]
 
     @property
     def allowed(self) -> bool:
-        return self.action != "block"
+        """The call may run now: allowed or only warned about."""
+        return self.action in ("allow", "warn")
+
+    @property
+    def needs_confirmation(self) -> bool:
+        """The call may run once a person confirms it; `reason()` says what to show them."""
+        return self.action == "confirm"
 
     def reason(self) -> str:
         return "; ".join(f.message for f in self.findings)
@@ -202,8 +277,12 @@ class RunReport:
     def blocked(self) -> bool:
         return any(f.severity == "block" for f in self.findings)
 
+    @property
+    def confirmations(self) -> int:
+        return sum(1 for f in self.findings if f.severity == "confirm")
+
     def explain(self) -> str:
-        head = "OK" if self.ok else ("BLOCK" if self.blocked else "WARN")
+        head = "OK" if self.ok else ("BLOCK" if self.blocked else "CONFIRM" if self.confirmations else "WARN")
         traced = sum(1 for c in self.checks if c.status == "sourced")
         summary = f"{traced}/{len(self.checks)} values found in context · {len(self.findings)} findings"
         lines = [f"{head} · {self.tool_calls} tool calls · {summary}"]
@@ -246,9 +325,16 @@ class RunMonitor:
         self.step = 0
         self._calls: Counter[str] = Counter()
         self._errored: set[str] = set()
-        self._pending: dict[str, tuple[str, list[str]]] = {}
-        self._last_by_tool: dict[str, tuple[str, list[str]]] = {}
-        self._hints = _schema_hints(tools or [])
+        self._pending: dict[str, tuple[str, list[str], str]] = {}
+        self._last_by_tool: dict[str, tuple[str, list[str], str]] = {}
+        self._hints = _schema_hints(tools or [], self.policy.schema_formats)
+        self._tools = {
+            str(t.get("function", t).get("name")) for t in tools or () if t.get("function", t).get("name")
+        }
+        self._named: dict[str, str] = {}
+        self._called: list[str] = []
+        self._window: list[str] = []
+        self._confirmed: str | None = None
         if system:
             self.system(system)
 
@@ -259,6 +345,11 @@ class RunMonitor:
 
     def user(self, text: str) -> None:
         self.store.add("user", "user", self._next(), text)
+        for m in _NAMED.finditer(text):
+            token = next(g for g in m.groups() if g)
+            self._named.setdefault(_resource(token), token.strip())
+        affirmed = bool(_AFFIRM.search(text)) and not _NEGATE.search(text)
+        self._confirmed = "\n".join(self._window) if affirmed and self._window else None
 
     def tool_result(self, name: str, output: Any, call_id: str | None = None) -> None:
         """Record a tool result. If the call that produced it used values with no source, the result
@@ -269,9 +360,11 @@ class RunMonitor:
         call = self._pending.pop(call_id, None) if call_id else None
         if call is None:
             call = self._last_by_tool.get(name)
-        key, unsourced = call if call is not None else (None, [])
+        key, unsourced, named = call if call is not None else (None, [], "")
         tainted = bool(unsourced) and self.policy.pure(name)
-        self.store.add("tool", f"tool:{name}", step, text, tainted=tainted, echoes=set(unsourced))
+        self.store.add(
+            "tool", f"tool:{name}", step, text, tainted=tainted, echoes=set(unsourced), named=named
+        )
         if key and _ERROR.search(text[:200]):
             self._errored.add(key)
 
@@ -287,7 +380,9 @@ class RunMonitor:
         findings: list[Finding] = []
         silent: list[str] = []
         pure = pol.pure(name)
-        for path, value in _leaves(args):
+        named = ""
+        leaves = _leaves(args)
+        for path, value in leaves:
             where = f"{name}.{path}" if path else name
             if pol.ignored(where):
                 continue
@@ -298,6 +393,8 @@ class RunMonitor:
             if pure:
                 silent.extend(self._pure_unsourced(value))
                 continue
+            if not named and isinstance(value, str) and self._named:
+                named = self._named.get(_resource(value), "")
             hint = self._hints.get(where)
             if hint and any(k in hint and hint[k] == value for k in ("default", "const")):
                 continue
@@ -326,7 +423,22 @@ class RunMonitor:
                 kind, value = "identifier", str(value)
             if self._skip(kind, value):
                 continue
-            checks.append(self._trace(step, where, kind, value, findings))
+            formats = hint.get("_formats") if hint else None
+            checks.append(self._trace(step, where, kind, value, findings, formats=formats))
+        if pol.needs_confirmation(name) or pol.checks_ambiguity(name):
+            self._selection(step, name, checks, findings)
+            if pol.needs_confirmation(name):
+                self._window = []
+        if self._tools and name not in self._tools:
+            message = f"{name} is not one of the agent's tools"
+            findings.append(Finding("unknown_tool", pol.on_unknown_tool, step, message, name))
+        missing = [
+            r for r in pol.prerequisites(name) if not any(fnmatch.fnmatchcase(c, r) for c in self._called)
+        ]
+        if missing and len(missing) == len(pol.prerequisites(name)):
+            message = f"{name} runs before {' or '.join(missing)}, which it requires"
+            findings.append(Finding("missing_prerequisite", pol.on_requires, step, message, name))
+        self._called.append(name)
         try:
             key = f"{name}({json.dumps(args, sort_keys=True, default=str)})"
         except (ValueError, RecursionError):
@@ -334,9 +446,9 @@ class RunMonitor:
         self._calls[key] += 1
         self.report_.tool_calls += 1
         unsourced = [_num_or_text(c.value) for c in checks if c.status != "sourced"] + silent
-        self._last_by_tool[name] = (key, unsourced)
+        self._last_by_tool[name] = (key, unsourced, named)
         if call_id:
-            self._pending[call_id] = (key, unsourced)
+            self._pending[call_id] = (key, unsourced, named)
         n = self._calls[key]
         if n >= pol.max_repeats:
             findings.append(
@@ -363,13 +475,22 @@ class RunMonitor:
             findings.append(Finding("over_budget", pol.on_budget, step, message, name))
         self.report_.checks.extend(checks)
         self.report_.findings.extend(findings)
-        action: Literal["allow", "warn", "block"] = "allow"
-        if findings:
-            action = "block" if any(f.severity == "block" for f in findings) else "warn"
+        levels = {f.severity for f in findings}
+        action: Action = (
+            "block"
+            if "block" in levels
+            else "confirm"
+            if "confirm" in levels
+            else "warn"
+            if levels
+            else "allow"
+        )
         return Decision(action, tuple(findings), tuple(checks))
 
     def assistant(self, text: str) -> list[ValueCheck]:
         step = self._next()
+        if text and text.strip():
+            self._window.append(text)
         if not self.policy.check_text or not text:
             return []
         checks: list[ValueCheck] = []
@@ -423,6 +544,55 @@ class RunMonitor:
                 out.append(_num_or_text(v))
         return out
 
+    def _selection(self, step: int, name: str, checks: list[ValueCheck], findings: list[Finding]) -> None:
+        """Confirmation binding and ambiguous selections for a side-effecting call. Neither says the
+        value is wrong; each says a person or a verifier should look before the call runs. Values the
+        user typed need neither. The confirmed summary is everything the agent said since the last
+        confirmed action, when the user's latest message agrees to it."""
+        pol = self.policy
+        store = self.store
+        confirmed = self._confirmed
+        values = [
+            c
+            for c in checks
+            if c.where != "text" and c.status == "sourced" and not (c.source or "").startswith("user@")
+        ]
+        alts = {str(c.value): store.alternatives(str(c.value)) for c in values if c.kind == "identifier"}
+
+        def in_summary(c: ValueCheck) -> bool:
+            if confirmed is None:
+                return False
+            if c.kind == "identifier":
+                return store.bound(str(c.value), confirmed, alts[str(c.value)])
+            return _in_text(confirmed, c.kind, c.value, store.as_of)
+
+        if pol.needs_confirmation(name):
+            if confirmed is None:
+                message = f"{name} runs without the user confirming it in their last message"
+                findings.append(Finding("unconfirmed", pol.on_selection, step, message, name))
+            else:
+                absent = [c for c in values if not in_summary(c)]
+                if absent:
+                    shown = ", ".join(f"{c.where}={c.value}" for c in absent[:4])
+                    verb = "was" if len(absent) == 1 else "were"
+                    message = f"{shown} {verb} not in the summary the user confirmed"
+                    findings.append(Finding("unconfirmed", pol.on_selection, step, message, name))
+        if pol.checks_ambiguity(name):
+            said = "\n".join(src.raw for src in store.sources if src.kind == "user")
+            for c in values:
+                if c.kind != "identifier" or not alts[str(c.value)]:
+                    continue
+                if store.bound(str(c.value), said, alts[str(c.value)]) or in_summary(c):
+                    continue
+                others = alts[str(c.value)]
+                listed = ", ".join(others[:3])
+                plural = "s" if len(others) > 1 else ""
+                message = (
+                    f"{c.where}={c.value} was chosen from context; nothing the user said or confirmed "
+                    f"singles it out from {len(others)} other value{plural} of the same shape ({listed})"
+                )
+                findings.append(Finding("ambiguous_selection", pol.on_selection, step, message, c.where))
+
     def _small_is_sourced(self, v: float) -> bool:
         return self.store.has_count(v) or self.store.find("number", v, strict=True) is not None
 
@@ -435,24 +605,38 @@ class RunMonitor:
         findings: list[Finding],
         literal: str | None = None,
         prose: bool = False,
+        formats: list[tuple[str, int, str]] | None = None,
     ) -> ValueCheck:
         shown = literal if literal is not None else value
         strict = where != "text" and not prose
         shift_ok = not _BIRTH.search(where)
         rule = self.policy.rule_for(where) if where != "text" else None
-        hit = self.store.find(kind, value, set(rule) if rule else None, strict=strict, shift_ok=shift_ok)
+        allowed = set(rule) if rule else None
+        hit = self.store.find(kind, value, allowed, strict=strict, shift_ok=shift_ok, formats=formats)
         if hit is not None:
             if kind == "number" and hit.how.startswith("derived") and not strict:
                 self.store.add("derived", "derived", step, "", numbers=[float(value)])
             return _check(step, where, shown, kind, "sourced", hit)
         if rule:
-            anywhere = self.store.find(kind, value, strict=strict, shift_ok=shift_ok)
+            anywhere = self.store.find(kind, value, strict=strict, shift_ok=shift_ok, formats=formats)
             if anywhere is not None:
+                level: Severity = self.policy.on_rule
                 message = (
                     f"{where}={shown!s} came from {anywhere.source.label}, "
                     f"but must come from {', '.join(sorted(rule))}"
                 )
-                findings.append(Finding("source_rule", self.policy.on_rule, step, message, where))
+                named = anywhere.source.named
+                if named and self.policy.named_sources == "confirm" and level == "block":
+                    level = "confirm"
+                    message = (
+                        f"{where}={shown!s} came from {anywhere.source.label} "
+                        f"({named}, which the user named), not from {', '.join(sorted(rule))}: "
+                        "confirm it before acting"
+                    )
+                    others = self.store.alternatives(str(value), anywhere.source)
+                    if others:
+                        message += f"; the same result also holds {', '.join(others[:3])}"
+                findings.append(Finding("source_rule", level, step, message, where))
                 return _check(step, where, shown, kind, "violation", anywhere)
             message = f"{where}={shown!s} is not in context, and must come from {', '.join(sorted(rule))}"
             findings.append(Finding("source_rule", self.policy.on_rule, step, message, where))
@@ -533,6 +717,29 @@ def _read_as_of(text: str) -> dt.date | None:
     return None
 
 
+def _resource(token: str) -> str:
+    """A file, URL, or address as the user named it, normalized for comparison with an argument."""
+    t = token.strip().strip(".,;:!?").lower()
+    if "://" in t or t.startswith("www."):
+        t = re.sub(r"^[a-z]+://(?:www\.)?|^www\.", "", t)
+    return t.rstrip("/")
+
+
+def _in_text(text: str, kind: Kind, value: Any, as_of: dt.date | None) -> bool:
+    """`value` appears in an agent's message the user confirmed."""
+    low = text.lower()
+    if kind == "number":
+        v = float(value)
+        return any(abs(v - x) <= 0.005 for x in scan_values(text))
+    if kind == "date":
+        want = parse_dates(str(value))
+        have = parse_dates(text, as_of)
+        return any((y, m, d) in have or (None, m, d) in have for y, m, d in want)
+    needle = str(value).lower()
+    squeeze = re.sub(r"[\s\-]", "", low)
+    return any(n and (n in low or n.replace("-", "") in squeeze) for n in (needle, needle.lstrip("#")))
+
+
 def _ruled_string(value: Any, hint: dict[str, Any] | None) -> bool:
     """A short string a source rule should still check although it has no digits: a password, a
     user name. A rule is about where a value came from, whatever it looks like."""
@@ -565,12 +772,12 @@ def _walk(x: Any, path: str, depth: int, out: list[tuple[str, Any]]) -> None:
         out.append((path, x))
 
 
-def _schema_hints(tools: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _schema_hints(tools: list[dict[str, Any]], formats: bool = True) -> dict[str, dict[str, Any]]:
     hints: dict[str, dict[str, Any]] = {}
     for t in tools:
         fn = t.get("function", t)
         name = fn.get("name")
-        params = fn.get("parameters") or fn.get("input_schema") or {}
+        params = fn.get("parameters") or fn.get("input_schema") or fn.get("inputSchema") or {}
         if not name:
             continue
         stack: list[tuple[Any, str, int]] = [(params, name, 0)]
@@ -584,5 +791,26 @@ def _schema_hints(tools: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             elif schema.get("type") == "array" and isinstance(schema.get("items"), dict):
                 stack.append((schema["items"], f"{path}[]", depth + 1))
             else:
-                hints[path] = schema
+                shapes = _formats(schema) if formats else []
+                hints[path] = {**schema, "_formats": shapes} if shapes else schema
     return hints
+
+
+def _formats(schema: dict[str, Any]) -> list[tuple[str, int, str]]:
+    """ID formats a schema states: a `pattern` like ^#W\\d{7}$, `examples`, or quoted examples in the
+    description ("such as '#W0000000'"), each as (literal prefix, digit count, literal suffix)."""
+    out: list[tuple[str, int, str]] = []
+    pattern = schema.get("pattern")
+    if isinstance(pattern, str) and (m := _PATTERN_SHAPE.match(pattern)) and (m.group(1) or m.group(3)):
+        out.append((m.group(1), int(m.group(2)), m.group(3)))
+    examples = [e for e in schema.get("examples") or () if isinstance(e, str)]
+    desc = schema.get("description")
+    if isinstance(desc, str) and _DESC_CUE.search(desc):
+        examples += _QUOTED.findall(desc)
+    for e in examples:
+        m = _ONE_DIGIT_RUN.match(e)
+        if m and (m.group(1) or m.group(3)):
+            shape = (m.group(1), len(m.group(2)), m.group(3))
+            if shape not in out:
+                out.append(shape)
+    return out

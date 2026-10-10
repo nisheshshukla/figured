@@ -7,9 +7,11 @@ python benchmarks/agent_eval.py --download          # tau-bench and tau2-bench; 
 python benchmarks/agent_eval.py taubench --json benchmarks/results/taubench.json
 python benchmarks/agent_eval.py tau2 --json benchmarks/results/tau2.json
 python benchmarks/agent_eval.py agentdojo --json benchmarks/results/agentdojo.json
+python benchmarks/agent_eval.py selection --json benchmarks/results/selection.json
+python benchmarks/agent_eval.py actions --json benchmarks/results/tau2_actions.json
 ```
 
-The JSON files in `benchmarks/results/` are the outputs reported below, plus `agentdojo_after_fix.json` for the one change made after the held-out run.
+The JSON files in `benchmarks/results/` are the outputs reported below, for 0.4.0. The 0.3.0 files, including the frozen held-out AgentDojo run, are in the `v0.3.0` tag.
 
 ## What is being claimed
 
@@ -47,13 +49,15 @@ Each cell is figured / baseline.
 
 ### tau-bench (development)
 
+Replayed with tau-bench's tool schemas (extracted from its source by `--download`), as the agents had them. `--no-tools` reproduces 0.3.0's setting: 16 successful runs flagged instead of 10, everything else the same.
+
 | File | Runs | Tool calls | Successful runs flagged | Real errors flagged | Absent corruptions caught | Substitutions caught |
 |---|---|---|---|---|---|---|
 | GPT-4o retail | 460 | 3,274 | 1 of 278 (0.4%) / 14.0% | 4 of 206 / 2 | 824 of 824 / 775 | 0 of 498 / 0 |
 | GPT-4o airline | 200 | 1,164 | 4 of 84 (4.8%) / 14.3% | 9 of 301 / 21 | 189 of 197 / 167 | 0 of 61 / 0 |
-| Claude 3.5 Sonnet retail | 920 | 7,086 | 8 of 637 (1.3%) / 12.2% | 2 of 213 / 2 | 1,905 of 1,906 / 1,776 | 0 of 1,163 / 0 |
-| Claude 3.5 Sonnet airline | 400 | 2,761 | 3 of 184 (1.6%) / 15.8% | 28 of 497 / 81 | 449 of 467 / 397 | 0 of 208 / 2 |
-| **All** | 1,980 | 14,285 | 16 of 1,183 (1.4%) / 13.4% | 43 of 1,217 (3.5%) / 106 (8.7%) | 3,367 of 3,394 (99.2%) / 91.8% | 0 of 1,930 / 2 |
+| Claude 3.5 Sonnet retail | 920 | 7,086 | 3 of 637 (0.5%) / 12.2% | 2 of 213 / 2 | 1,905 of 1,906 / 1,788 | 0 of 1,157 / 0 |
+| Claude 3.5 Sonnet airline | 400 | 2,761 | 2 of 184 (1.1%) / 15.8% | 28 of 497 / 81 | 450 of 468 / 401 | 0 of 205 / 2 |
+| **All** | 1,980 | 14,285 | 10 of 1,183 (0.8%) / 13.4% | 43 of 1,217 (3.5%) / 106 (8.7%) | 3,368 of 3,395 (99.2%) / 92.2% | 0 of 1,921 / 2 |
 
 ### tau2-bench telecom (held out)
 
@@ -88,8 +92,8 @@ Of the 844 wrong identifier, amount, date, and address values in tau-bench that 
 | 1 | `#W0028236`, an order number the user gave as 28236, padded with zeros | made up |
 | 2 | zip codes `98101` and `95112`, assumed from the city the user named | made up |
 | 2 | user IDs `olivia_gonzalez_902` and `_631`, guessed from the user's name | made up |
-| 4 | `#W9502126`, the `#W` prefix added to digits the user typed; the agent learned the format from a tool description, which figured does not read | false flag |
-| 2 | `card_7245904`, a gift card ID split by a space ("gift card_7245904") in a hand-off summary | false flag |
+| 4 | `#W9502126`, the `#W` prefix added to digits the user typed, a format the tool description states | false flag in 0.3.0; 0.4.0 reads the format |
+| 2 | `card_7245904`, a gift card ID split by a space ("gift card_7245904") in a hand-off summary | false flag in 0.3.0; prose may now shorten an ID after an underscore |
 
 Every made-up value reached a real tool. Those runs succeeded only because the bad call errored and the agent recovered.
 
@@ -127,6 +131,42 @@ The password miss is a design gap, not a tuning question: a source rule exists t
 
 The fix only changes runs with source rules, so tau-bench and tau2-bench are unaffected. It is in `benchmarks/results/agentdojo_after_fix.json`.
 
+### What the 145 telecom "wrong tool" errors are
+
+Read call by call, 63 of the 145 are Claude 3.7 Sonnet calling tools that belong to the simulated user's phone (`can_send_mms`, `run_speed_test`, `reboot_device`), which the agent does not have; the environment answered "Tool not found". The other 82 are real agent tools (`send_payment_request` 41, `resume_line` 34, `enable_roaming` 4, `refuel_data` 3) making changes the task did not call for. 0.3.0's docs reported all 145 as one class.
+
+## 0.4.0: tool schemas, confirmations, and checks on the call
+
+Built from follow-up research into the gaps 0.3.0 measured, comparing CaMeL, FIDES and Prudentia, Progent, PolicyGuard, ToolGuard, AWS AgentCore's temporal policies, and LLM tool-call judges. Its conclusion: fix the one false-flag class that has a deterministic fix, and for the questions provenance cannot answer, route rather than guess. Everything here is development data: tau-bench was tuned on before, and tau2-bench and AgentDojo have now been seen. Nothing below is held out.
+
+**Tool schemas.** IDs in the format a schema states, a `pattern` or examples in the description ("such as '#W0000000'"), are found when the digits are in context as a whole token and the digit count matches. Flags on successful tau-bench runs: 16 → 12; with the prose fix, 10, all genuine. Corruptions caught and real errors flagged are unchanged.
+
+**Unknown tools.** With the tool list passed, figured blocks a call to a tool the agent does not have. On tau2-bench it flags all 146 such calls by Claude 3.7 Sonnet, 43 of them in runs that still succeeded.
+
+**Selections and confirmations, tau-bench** (`python benchmarks/agent_eval.py selection`, with every write tool listed). "Asks" are `confirm` verdicts. "Reaches" counts real wrong values in required writes of failed runs that fall on a call it asked about, and in brackets those the finding names.
+
+| File | `ambiguous_before`: asks on writes, successful / failed runs | reaches, of wrong values | `confirm_before`: asks on writes, successful / failed | reaches |
+|---|---|---|---|---|
+| GPT-4o retail | 9.3% / 7.0% | 27 (7) of 160 | 22.2% / 28.2% | 59 (10) of 160 |
+| GPT-4o airline | 25.0% / 30.4% | 84 (31) of 250 | 53.6% / 72.2% | 225 (43) of 250 |
+| Claude 3.5 Sonnet retail | 2.5% / 3.8% | 9 (4) of 184 | 9.4% / 12.3% | 23 (1) of 184 |
+| Claude 3.5 Sonnet airline | 11.5% / 13.1% | 105 (42) of 408 | 40.8% / 40.7% | 252 (48) of 408 |
+
+On tau2-bench telecom, whose policy does not require a confirmation before every change, `confirm_before` asked on 46% to 93% of writes in successful runs, and `ambiguous_before` on 0% to 1.2% (failed runs 0% to 7.9%).
+
+Two rounds of fixes on tau-bench got here, and both are recorded so the numbers can be read as tuned. Matching IDs literally against the confirmed summary asked on 70% to 85% of writes: agents confirm with names ("the headphones", "the Mastercard ending in 2478"), not IDs. Binding through the attributes of each ID's record, a multi-turn confirmation window, values the user typed, and more ways of saying yes brought it to the table above.
+
+**Named sources, AgentDojo** (`named_sources="confirm"`, the source rules unchanged):
+
+| Runs with a flagged write | Blocked | Confirm | Blocked, rules only |
+|---|---|---|---|
+| Injection succeeded (47) | 18 (38.3%) | 18 (38.3%) | 36 (76.6%) |
+| No attack, task completed (116) | 9 (7.8%) | 9 (7.8%) | 18 (15.5%) |
+
+Confirmations per completed benign task: 0.10. The same move that halves blocked benign runs sends 18 of 47 successful injections to a person, because AgentDojo places its injection in the very file the user names; in the attack runs the bill's real IBAN is replaced by the attacker's, so a "two candidates in one file" check would not fire either. This is why it is opt-in.
+
+**Prerequisites, tau2-bench telecom.** Three rules taken from the policy text before looking at errors ("always check that the bill is overdue before sending a payment request", lift a suspension only after the bills are paid, check roaming before enabling it). They flagged 0% to 0.4% of writes in successful runs and 2 of the 82 unneeded changes. The agents did the lookups; the changes were still not needed.
+
 ## Hand-written probes
 
 An independent review wrote 64 cases: 41 correct behaviors that must pass, 23 wrong behaviors that must be flagged, and 18 format and robustness cases. These were used during development, so they are not a held-out measure.
@@ -157,10 +197,11 @@ Still missed though wrong:
 
 ## Speed
 
-`python benchmarks/agent_speed.py` replays every tau-bench call. `before_call` takes 23 µs at the median and 0.16 ms at p99. With `--synthetic`, sessions of 400 KB of tool output take 0.22 ms median and 0.42 ms p99, and 2 MB takes 0.49 ms and 1.3 ms. Adding a tool result takes about 0.1 ms at the median and a system prompt about 1 ms, both off the critical path. 0.3.0 is about 25% slower per call than the unreleased performance work it builds on, in exchange for the separator-insensitive matching, the arithmetic, and the laundering checks.
+`python benchmarks/agent_speed.py` replays every tau-bench call, with tool schemas. `before_call` takes 26 µs at the median and 0.19 ms at p99 (0.3.0: 23 µs and 0.16 ms). With `--synthetic`, sessions of 400 KB of tool output take 0.23 ms median and 0.43 ms p99, and 2 MB takes 0.49 ms and 1.1 ms. The selection checks parse a tool result's records only when a side-effecting call asks, so they cost nothing on other calls. Adding a tool result takes about 0.1 ms at the median and a system prompt about 1 ms, both off the critical path. 0.3.0 is about 25% slower per call than the unreleased performance work it builds on, in exchange for the separator-insensitive matching, the arithmetic, and the laundering checks.
 
 ## Reading these numbers
 
-- The false-flag rate is low enough to run on all traffic: 1.4% of successful runs on development data and 0.5% held out, against 13% for the substring baseline on tau-bench.
+- The false-flag rate is low enough to run on all traffic: 0.8% of successful runs on development data (all genuine fabrications) and 0.5% on tau2-bench, against 13% for the substring baseline on tau-bench.
 - Values altered the way models alter them are caught 99% of the time.
-- Most real agent failure is a real value chosen wrongly, or a wrong tool, and figured catches 2 to 4% of it. It is one layer: cheap enough for every call, precise on the failure it targets, and blind to the rest by construction.
+- Most real agent failure is a real value chosen wrongly, or a call no one needed, and figured's provenance check catches 2 to 4% of it. The 0.4.0 checks do not change that: they mark which calls deserve a person or a verifier, with a modest lift over asking at random, and block calls to tools the agent does not have.
+- It is one layer: cheap enough for every call, precise on the failure it targets, and honest about the rest.

@@ -97,6 +97,8 @@ class Source:
     echoes: frozenset[str] = frozenset()
     money: list[float] = field(default_factory=list)
     squeezed: str = ""
+    named: str = ""
+    _records: dict[str, set[str]] | None = field(default=None, repr=False)
     _collapsed: str | None = field(default=None, repr=False)
 
     def ref(self) -> str:
@@ -151,6 +153,7 @@ class SourceStore:
         *,
         tainted: bool = False,
         echoes: set[str] | None = None,
+        named: str = "",
     ) -> None:
         """Record a source and index it now, off the latency-critical path.
 
@@ -163,7 +166,9 @@ class SourceStore:
         if kind == "system":
             echoes = (echoes or set()) | _examples(text)
         echo = frozenset(f for e in echoes or () for f in (norm(e), norm(e).lstrip("#")))
-        src = Source(kind, label, step, text, text.lower(), numbers, tainted=tainted, echoes=echo)
+        src = Source(
+            kind, label, step, text, text.lower(), numbers, tainted=tainted, echoes=echo, named=named
+        )
         self.sources.append(src)
         if tainted:
             src.numbers, src.dates = [], set()
@@ -219,6 +224,7 @@ class SourceStore:
         *,
         strict: bool = False,
         shift_ok: bool = True,
+        formats: list[tuple[str, int, str]] | None = None,
     ) -> Hit | None:
         """Most recent untainted source that can account for `value`, limited to `allowed` kinds."""
         if kind == "number":
@@ -238,8 +244,65 @@ class SourceStore:
         if kind == "url":
             return self._url(text, allowed)
         if kind == "identifier":
-            return self._separated(text, allowed) or self._prefixed(text, allowed)
+            return (
+                (self._formatted(text, formats, allowed) if formats else None)
+                or self._separated(text, allowed)
+                or self._prefixed(text, allowed)
+            )
         return None
+
+    def attributes(self, value: str) -> set[str]:
+        """What tool results say about the record an identifier names: the other fields of the JSON
+        object holding it ("Headphones", "mastercard", "2478" for an item or a card). Parsed on first
+        use, so only side-effecting calls that ask pay for it."""
+        key = norm(value).lstrip("#")
+        out: set[str] = set()
+        for src in self.sources:
+            if src.kind == "tool" and not src.tainted:
+                if src._records is None:
+                    src._records = _records(src.raw[: self.max_index_chars])
+                out |= src._records.get(key, set())
+        return out
+
+    def bound(self, value: str, text: str, alternatives: list[str]) -> bool:
+        """`text` singles out `value`: it names the value, or an attribute of its record that the other
+        candidates do not all share ("the headphones", "the Mastercard ending in 2478")."""
+        low = text.lower()
+        v = norm(value)
+        if _contains(low, v) or _contains(low, v.lstrip("#")):
+            return True
+        mine = self.attributes(v)
+        if not mine:
+            return False
+        theirs = [self.attributes(a) for a in alternatives]
+        return any(_contains(low, a) and (not theirs or not all(a in t for t in theirs)) for a in mine)
+
+    def alternatives(self, value: str, within: Source | None = None) -> list[str]:
+        """Other values of the same shape as `value` in context (or in one source): letters stay letters,
+        digit runs keep their length. Three order IDs, two payment methods: a choice was made."""
+        text = norm(value)
+        if "@" in text:
+            rx = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+        else:
+            parts = re.findall(r"[a-z]+|\d+|[^a-z\d]+", text)
+            if not any(p[0].isdigit() for p in parts):
+                return []
+            shape = "".join(
+                "[a-z]+" if p[0].isalpha() else rf"\d{{{len(p)}}}" if p[0].isdigit() else re.escape(p)
+                for p in parts
+            )
+            rx = re.compile(r"(?<![a-z0-9_#])" + shape + r"(?![a-z0-9_])")
+        found: dict[str, None] = {}
+        for src in [within] if within is not None else reversed(self.sources):
+            if src.tainted or src.kind == "derived":
+                continue
+            same = len(src.raw) == len(src.low)
+            for m in rx.finditer(src.low):
+                if m.group(0) != text and m.group(0).lstrip("#") != text.lstrip("#"):
+                    found.setdefault(src.raw[m.start() : m.end()] if same else m.group(0))
+                    if len(found) >= 20:
+                        return list(found)
+        return list(found)
 
     def tainted_mention(self, kind: str, value: object) -> Source | None:
         """The newest tainted source that mentions `value`, for explaining a miss."""
@@ -290,6 +353,29 @@ class SourceStore:
             if rx.search(src.low):
                 return i
         return -1
+
+    def _formatted(
+        self, text: str, formats: list[tuple[str, int, str]], allowed: set[str] | None
+    ) -> Hit | None:
+        """An ID in the format a tool's schema states, around digits found in context: "#W9502127" for
+        the 9502127 the user typed, when the schema says "such as '#W0000000'". Only the literal
+        prefix and suffix are added; the digits must be a whole token in context and the count must
+        match, so "credit_card_7334" from "ending in 7334" still fails a seven-digit format."""
+        for prefix, n, suffix in formats:
+            p, s = prefix.lower(), suffix.lower()
+            if len(text) == len(p) + n + len(s) and text.startswith(p) and text.endswith(s):
+                core, wrapped = text[len(p) : len(text) - len(s)], ""
+            elif text.isdigit() and len(text) == n:
+                core, wrapped = p + text + s, text
+            else:
+                continue
+            if not (wrapped or core.isdigit()):
+                continue
+            i = self._search(core, allowed)
+            if i >= 0:
+                why = f"the {prefix}{'#' * n}{suffix} format from the tool's schema"
+                return Hit(self.sources[i], "normalized", why)
+        return None
 
     def _separated(self, text: str, allowed: set[str] | None) -> Hit | None:
         """The same identifier written with different separators or spacing: "ORD 88213" for
@@ -612,17 +698,17 @@ def _num_text(v: float) -> str:
 
 
 def _contains(haystack: str, needle: str, *, tails: bool = False) -> bool:
-    """Needle as a whole token. With `tails`, a run of digits may also be the tail of an identifier
-    (paypal_5334408), which prose uses ("the account ending in 5334408") but an argument must not."""
+    """Needle as a whole token. With `tails`, it may also be the tail of an identifier after an underscore
+    (5334408 or card_5334408 in paypal_5334408, gift_card_5334408), which prose uses ("the account
+    ending in 5334408", "gift card_5334408") but an argument must not."""
     if not needle:
         return False
-    digit_start = tails and needle[0].isdigit()
     n = len(needle)
     i = haystack.find(needle)
     while i >= 0:
         before = haystack[i - 1] if i > 0 else " "
         after = haystack[i + n] if i + n < len(haystack) else " "
-        if not before.isalnum() and (before != "_" or digit_start) and not after.isalnum() and after != "_":
+        if not before.isalnum() and (before != "_" or tails) and not after.isalnum() and after != "_":
             return True
         i = haystack.find(needle, i + 1)
     return False
@@ -693,6 +779,56 @@ def _squeeze(text: str) -> str:
         if ch in text:
             text = text.replace(ch, "")
     return text
+
+
+def _id_like(x: str) -> bool:
+    return len(x) >= 4 and any(c.isdigit() for c in x) and " " not in x
+
+
+def _records(text: str) -> dict[str, set[str]]:
+    """Identifier -> the scalar fields beside it in its JSON object (one level of nesting included,
+    so an order's record holds its items' names),
+    for IDs held as values ({"item_id": "42..", "name": "Headphones"}) or as keys
+    ({"credit_card_95..": {"brand": "mastercard", "last_four": "2478"}})."""
+    if text.lstrip()[:1] not in "[{":
+        return {}
+    try:
+        data = json.loads(text)
+    except (ValueError, RecursionError):
+        return {}
+    out: dict[str, set[str]] = {}
+
+    def scalars(d: dict[str, Any]) -> set[str]:
+        vals: set[str] = set()
+        for v in d.values():
+            if isinstance(v, dict):
+                items = list(v.values())
+            elif isinstance(v, list):
+                items = [y for x in v for y in (x.values() if isinstance(x, dict) else [x])]
+            else:
+                items = [v]
+            for x in items:
+                if isinstance(x, str | int | float) and not isinstance(x, bool):
+                    t = norm(str(x))
+                    if len(t) >= 3 and len(t) <= 60:
+                        vals.add(t)
+        return vals
+
+    stack: list[Any] = [data]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, dict):
+            attrs = scalars(x)
+            for k, v in x.items():
+                if isinstance(v, str) and _id_like(v):
+                    out.setdefault(norm(v).lstrip("#"), set()).update(attrs - {norm(v)})
+                if _id_like(str(k)) and isinstance(v, dict):
+                    out.setdefault(norm(str(k)).lstrip("#"), set()).update(scalars(v))
+                if isinstance(v, dict | list):
+                    stack.append(v)
+        elif isinstance(x, list):
+            stack.extend(x)
+    return out
 
 
 def _currency(text: str) -> list[float]:

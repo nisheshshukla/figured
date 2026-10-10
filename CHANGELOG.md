@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0
+
+Tool schemas, a confirm verdict, and checks on the call. Built from research into 0.3.0's measured gaps: fix the false flags that have a deterministic fix, and for questions provenance cannot answer, ask instead of guessing. See `docs/agent-eval-results.md`.
+
+- Tool schemas are read for ID formats: a `pattern`, `examples`, or examples in a parameter's description ("such as '#W0000000'"). An agent that adds the stated prefix to digits found in context is not flagged. Only literal affixes are added; the digits must be a whole token in context and their count must match. Off with `schema_formats=False`.
+- A call to a tool that is not in `tools` is blocked (`unknown_tool`, `on_unknown_tool`).
+- A fourth verdict, `confirm`: hold the call for a person or a verifier. `Decision.needs_confirmation` says to ask; `Decision.allowed` is False for both confirm and block. `RunReport.confirmations` counts them.
+- `ambiguous_before`: an identifier chosen from several of the same shape, which the user neither typed nor singled out by value or by an attribute of its record, asks for confirmation.
+- `confirm_before`: a call needs the user's yes to what the agent said since the last confirmed action, with every value in it, by value or by attribute.
+- `named_sources="confirm"`: a source-rule violation whose value came from a file, URL, or address the user named asks instead of blocking. The default stays "rule".
+- `requires`: calls that must come first.
+- In prose, an identifier may be shortened after an underscore ("gift card_7245904").
+- Measured: successful tau-bench runs flagged 16 → 10 of 1,183, all ten genuine fabrications; the selection and confirmation checks, named sources, and prerequisites with their costs and reach on tau-bench, tau2-bench, and AgentDojo.
+- Docs: 0.3.0 reported all 145 telecom wrong-tool errors as one class. 63 were calls to tools the agent does not have, and 82 were unneeded changes.
+- `benchmarks/agent_eval.py`: `selection` and `actions` evaluations, tau-bench tool schemas, `--no-tools`; AgentDojo reports blocked, confirm, and warn separately.
+
 ## 0.3.0
 
 Agent checks, made honest and fast. An independent review found that 0.2.0's headline overstated what it caught, that several heuristics opened holes, and that unknown transcript formats were reported as clean. This release fixes those and re-measures on held-out data. See `docs/agent-eval-results.md`.

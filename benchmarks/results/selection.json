@@ -1,0 +1,168 @@
+[
+  {
+    "label": "gpt-4o-retail",
+    "writes": [
+      "cancel_pending_order",
+      "exchange_delivered_order_items",
+      "modify_pending_order_address",
+      "modify_pending_order_items",
+      "modify_pending_order_payment",
+      "modify_user_address",
+      "return_delivered_order_items"
+    ],
+    "confirm": {
+      "runs_ok": 278,
+      "writes_ok": 365,
+      "asked_runs_ok": 64,
+      "asks_ok": 81,
+      "runs_fail": 182,
+      "writes_fail": 301,
+      "asked_runs_fail": 54,
+      "asks_fail": 85,
+      "wrong_value": 160,
+      "wrong_value_on_asked_call": 59,
+      "wrong_value_named": 10,
+      "wrong_tool": 46,
+      "wrong_tool_asked": 12
+    },
+    "ambiguous": {
+      "runs_ok": 278,
+      "writes_ok": 365,
+      "asked_runs_ok": 26,
+      "asks_ok": 34,
+      "runs_fail": 182,
+      "writes_fail": 301,
+      "asked_runs_fail": 15,
+      "asks_fail": 21,
+      "wrong_value": 160,
+      "wrong_value_on_asked_call": 27,
+      "wrong_value_named": 7,
+      "wrong_tool": 46,
+      "wrong_tool_asked": 4
+    }
+  },
+  {
+    "label": "gpt-4o-airline",
+    "writes": [
+      "book_reservation",
+      "cancel_reservation",
+      "send_certificate",
+      "update_reservation_baggages",
+      "update_reservation_flights",
+      "update_reservation_passengers"
+    ],
+    "confirm": {
+      "runs_fail": 116,
+      "writes_fail": 194,
+      "asked_runs_fail": 65,
+      "asks_fail": 140,
+      "wrong_value": 250,
+      "wrong_value_on_asked_call": 225,
+      "wrong_value_named": 43,
+      "runs_ok": 84,
+      "writes_ok": 56,
+      "asked_runs_ok": 18,
+      "asks_ok": 30,
+      "wrong_tool": 51,
+      "wrong_tool_asked": 32
+    },
+    "ambiguous": {
+      "runs_fail": 116,
+      "writes_fail": 194,
+      "asked_runs_fail": 28,
+      "asks_fail": 59,
+      "wrong_value": 250,
+      "wrong_value_on_asked_call": 84,
+      "wrong_value_named": 31,
+      "runs_ok": 84,
+      "writes_ok": 56,
+      "asked_runs_ok": 8,
+      "asks_ok": 14,
+      "wrong_tool": 51,
+      "wrong_tool_asked": 12
+    }
+  },
+  {
+    "label": "sonnet-35-new-retail",
+    "writes": [
+      "cancel_pending_order",
+      "exchange_delivered_order_items",
+      "modify_pending_order_address",
+      "modify_pending_order_items",
+      "modify_pending_order_payment",
+      "modify_user_address",
+      "return_delivered_order_items"
+    ],
+    "confirm": {
+      "runs_ok": 637,
+      "writes_ok": 904,
+      "asked_runs_ok": 68,
+      "asks_ok": 85,
+      "runs_fail": 283,
+      "writes_fail": 448,
+      "asked_runs_fail": 43,
+      "asks_fail": 55,
+      "wrong_value": 184,
+      "wrong_value_on_asked_call": 23,
+      "wrong_value_named": 1,
+      "wrong_tool": 29,
+      "wrong_tool_asked": 6
+    },
+    "ambiguous": {
+      "runs_ok": 637,
+      "writes_ok": 904,
+      "asked_runs_ok": 23,
+      "asks_ok": 23,
+      "runs_fail": 283,
+      "writes_fail": 448,
+      "asked_runs_fail": 13,
+      "asks_fail": 17,
+      "wrong_value": 184,
+      "wrong_value_on_asked_call": 9,
+      "wrong_value_named": 4,
+      "wrong_tool": 29,
+      "wrong_tool_asked": 3
+    }
+  },
+  {
+    "label": "sonnet-35-new-airline",
+    "writes": [
+      "book_reservation",
+      "cancel_reservation",
+      "send_certificate",
+      "update_reservation_baggages",
+      "update_reservation_flights",
+      "update_reservation_passengers"
+    ],
+    "confirm": {
+      "runs_fail": 216,
+      "writes_fail": 337,
+      "asked_runs_fail": 80,
+      "asks_fail": 137,
+      "wrong_value": 408,
+      "wrong_value_on_asked_call": 252,
+      "wrong_value_named": 48,
+      "runs_ok": 184,
+      "writes_ok": 157,
+      "asked_runs_ok": 42,
+      "asks_ok": 64,
+      "wrong_tool": 89,
+      "wrong_tool_asked": 31
+    },
+    "ambiguous": {
+      "runs_fail": 216,
+      "writes_fail": 337,
+      "asked_runs_fail": 30,
+      "asks_fail": 44,
+      "wrong_value": 408,
+      "wrong_value_on_asked_call": 105,
+      "wrong_value_named": 42,
+      "runs_ok": 184,
+      "writes_ok": 157,
+      "asked_runs_ok": 12,
+      "asks_ok": 18,
+      "wrong_tool": 89,
+      "wrong_tool_asked": 10
+    }
+  }
+]
